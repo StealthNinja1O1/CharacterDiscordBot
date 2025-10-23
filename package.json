@@ -1,0 +1,30 @@
+{
+  "name": "v2character-discord-bot",
+  "version": "1.0.0",
+  "description": "A Discord bot that behaves like a character defined in character.json",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js",
+    "watch": "tsc --watch"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "ai",
+    "character"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1",
+    "gpt-tokenizer": "^3.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "typescript": "^5.3.3"
+  }
+}

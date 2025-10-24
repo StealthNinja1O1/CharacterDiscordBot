@@ -1,177 +1,195 @@
 # Character Discord Bot
 
-A Discord bot that behaves like a character defined in `character.json`, using the Character Card V2 standard. The bot responds when mentioned, when its name is included in messages, and randomly at a configurable rate.
+A Discord bot that simulates a character defined by a Character Card V2 JSON file. The bot uses OpenAI-compatible APIs to generate responses based on the character's personality and conversation context.
+
+## Overview
+
+This is a straightforward implementation that covers the essential features needed for a character roleplay bot in Discord. It reads character definitions from a standard Character Card V2 file and uses only the core fields (name, description, and example messages) to keep the implementation simple and maintainable.
+
+The bot is functional but basic by design. It focuses on reliable conversation handling rather than advanced features. If you need a simple way to bring a character to life in Discord without complexity, this works well.
 
 ## Features
 
-- ✅ Responds when mentioned (@bot)
-- ✅ Responds when character name is mentioned in messages
-- ✅ Random responses (configurable rate, default 1 in 50 messages)
-- ✅ Takes message history into context with proper user attribution
-- ✅ Replaces Discord usernames with `{{user}}` for the current user
-- ✅ Token-based context limiting (configurable, default 20k tokens)
-- ✅ Continuous typing indicator during response generation
-- ✅ `/togglerandom` slash command to enable/disable random responses (admin-only)
-- ✅ Locked to a specific channel
-- ✅ Uses GLM API for AI responses
-- ✅ Character Card V2 format support
+- Responds when mentioned or when the character name appears in messages
+- Optional random response chance (configurable)
+- Maintains conversation context with token-based limiting
+- Admin-only slash command to toggle random responses
+- Can be locked to a specific channel
 
-## Setup
+## Requirements
 
-### 1. Install Dependencies
+- Node.js 18 or higher
+- Discord bot token
+- OpenAI-compatible API endpoint (OpenAI, OpenRouter, local LLM, etc.)
+- Character Card V2 JSON file
 
-```powershell
+## Installation
+
+```bash
 npm install
 ```
 
-### 2. Configure Discord Bot
+## Configuration
 
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
-2. Create a new application
-3. Go to the "Bot" section and create a bot
-4. Enable the following **Privileged Gateway Intents**:
-   - Message Content Intent
-5. Copy the bot token
-6. Go to OAuth2 → URL Generator
-7. Select scopes: `bot` and `applications.commands`
-8. Select bot permissions:
-   - Send Messages
-   - Read Message History
-   - Use Slash Commands
-9. Use the generated URL to invite the bot to your server
+Configuration can be done via environment variables (.env file) or by editing `src/config.ts` directly.
 
-### 3. Get Channel ID
-
-1. Enable Developer Mode in Discord (Settings → Advanced → Developer Mode)
-2. Right-click on the channel where you want the bot to respond
-3. Click "Copy ID"
-
-### 4. Get User IDs (for admin commands)
-
-1. Right-click on your username in Discord
-2. Click "Copy ID"
-3. Repeat for any other users who should have admin access
-
-### 5. Configure Environment Variables
-
-Edit the `.env` file with your configuration:
+### Environment Variables (.env)
 
 ```env
-# GLM API Configuration
-GLM_API_KEY=your_glm_api_key_here
-GLM_BASE_URL=
+# LLM API Configuration
+LLM_API_KEY=your_api_key_here
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-4o
 
 # Discord Bot Configuration
-DISCORD_BOT_TOKEN=your_discord_bot_token_here
-DISCORD_CHANNEL_ID=your_channel_id_here
-DISCORD_ALLOWED_USERS=user_id_1,user_id_2,user_id_3
+DISCORD_BOT_TOKEN=your_discord_bot_token
+DISCORD_CHANNEL_ID=your_channel_id
+DISCORD_ALLOWED_USERS=comma,separated,user,ids
 
-# Bot Behavior Settings
+# Bot Behavior
 RANDOM_RESPONSE_RATE=50
-MAX_HISTORY_MESSAGES=20
+MAX_HISTORY_MESSAGES=30
+MAX_CONTEXT_TOKENS=20000
+IGNORE_OTHER_BOTS=true
+TRIGGER_KEYWORDS=optional,comma,separated,keywords,assistant,bot,
 ```
 
-**Configuration Options:**
-- `RANDOM_RESPONSE_RATE`: The bot will respond randomly to 1 in X messages (default: 50)
-- `MAX_HISTORY_MESSAGES`: Number of previous messages to initially fetch (default: 20)
-- `MAX_CONTEXT_TOKENS`: Maximum tokens for context including system prompt (default: 20000)
-- `DISCORD_ALLOWED_USERS`: Comma-separated list of Discord user IDs allowed to use admin commands
+### Configuration Options
 
-### 6. Customize Your Character
+**LLM Settings:**
+- `LLM_API_KEY` - API key for your LLM provider
+- `LLM_BASE_URL` - Base URL for the API endpoint
+- `LLM_MODEL` - Model name to use
 
-Edit `src/character.json` with your character data. The bot uses the Character Card V2 format:
+**Discord Settings:**
+- `DISCORD_BOT_TOKEN` - Your Discord bot token
+- `DISCORD_CHANNEL_ID` - Channel ID where the bot responds (leave empty for all channels)
+- `DISCORD_ALLOWED_USERS` - User IDs allowed to use admin commands
 
+**Behavior:**
+- `RANDOM_RESPONSE_RATE` - Responds randomly to 1 in X messages (0 to disable)
+- `MAX_HISTORY_MESSAGES` - Number of recent messages to fetch
+- `MAX_CONTEXT_TOKENS` - Maximum tokens for context (includes system prompt)
+- `IGNORE_OTHER_BOTS` - Whether to ignore messages from other bots
+- `TRIGGER_KEYWORDS` - Additional keywords that trigger responses
+
+## Setting Up LLM API
+
+### OpenAI
+
+1. Get an API key from https://platform.openai.com/api-keys
+2. Configure:
+```env
+LLM_API_KEY=sk-...
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-4o
+```
+
+### OpenRouter
+
+OpenRouter provides access to multiple LLM providers through a single API.
+
+1. Get an API key from https://openrouter.ai/keys
+2. Configure:
+```env
+LLM_API_KEY=sk-or-v1-...
+LLM_BASE_URL=https://openrouter.ai/api/v1
+LLM_MODEL=anthropic/claude-3.5-sonnet
+```
+
+3. Optional: Add HTTP referrer header for rankings (edit `src/api/llm.ts`):
+```typescript
+headers: {
+  "HTTP-Referer": "your-site-url",
+  "X-Title": "your-app-name"
+}
+```
+
+### Other Providers
+
+Any OpenAI-compatible API works:
+- **Local LLMs**: Ollama, LM Studio, text-generation-webui
+- **Anthropic Claude**: Through OpenRouter or with adapter
+- **Zhipu AI (GLM)**: Direct API access
+- **Together AI, Groq, etc**: Most modern APIs follow OpenAI format
+
+Just set the `LLM_BASE_URL` to the provider's endpoint.
+
+## Discord Bot Setup
+
+1. Create application at https://discord.com/developers/applications
+2. Go to Bot section, create bot, copy token
+3. Enable "Message Content Intent" under Privileged Gateway Intents
+4. Go to OAuth2 > URL Generator
+   - Scopes: `bot`, `applications.commands`
+   - Permissions: Send Messages, Read Message History
+5. Use generated URL to invite bot to your server
+6. Enable Developer Mode in Discord (Settings > Advanced)
+7. Right-click channel, Copy ID for `DISCORD_CHANNEL_ID`
+8. Right-click your username, Copy ID for `DISCORD_ALLOWED_USERS`
+
+## Character Configuration
+
+Edit `src/character.json` with your character. The bot uses only these fields:
+- `data.name` - Character name
+- `data.description` - Personality and background
+- `data.mes_example` - Example dialogue
+
+Example:
 ```json
 {
   "spec": "chara_card_v2",
   "spec_version": "2.0",
   "data": {
-    "name": "YourCharacterName",
-    "description": "Character description and personality...",
-    "mes_example": "<START>\n{{char}}: Example dialogue...",
-    ...
+    "name": "Assistant",
+    "description": "A helpful AI assistant.",
+    "mes_example": "<START>\n{{char}}: Hello! How can I help you today?"
   }
 }
 ```
 
-## Running the Bot
+Other Character Card V2 fields are ignored. This keeps the implementation simple.
 
-### Build and Start
+## Running
 
-```powershell
+```bash
 npm run build
 npm start
 ```
 
-### Development Mode (with auto-rebuild)
-
-```powershell
+For development with auto-rebuild:
+```bash
 npm run watch
-```
-
-Then in another terminal:
-```powershell
-npm start
 ```
 
 ## Usage
 
-### In Discord
+In Discord:
+- Mention the bot: `@BotName hello`
+- Use character name: `Hey CharacterName, how are you?`
+- Use trigger keywords (if configured)
+- Random responses (if enabled)
 
-The bot will respond in the configured channel when:
-
-1. **Mentioned**: `@BotName what's up?`
-2. **Name included**: `Hey ENTITY_0, are you there?`
-3. **Random chance**: Just chat normally, and the bot will randomly join the conversation
-
-### Slash Commands
-
-- `/togglerandom` - Toggle random responses on/off (only allowed users can use this)
-
-## How It Works
-
-1. The bot monitors messages in the specified channel
-2. When triggered, it fetches message history from Discord
-3. Each message retains the original Discord username (only current user becomes `{{user}}`)
-4. Messages are counted using gpt-tokenizer and trimmed to fit within the token limit
-5. The system prompt is always included, then as many recent messages as possible
-6. The bot shows a typing indicator that loops until the response is ready
-7. The GLM API generates a response in character
-8. The bot replies in Discord
+Admin commands:
+- `/togglerandom` - Enable/disable random responses (allowed users only)
 
 ## Project Structure
 
 ```
 src/
-├── character.json          # Your character definition
-├── config.ts              # Bot configuration
-├── constants.ts           # Default presets and personas
-├── index.ts              # Main bot file
-├── api/
-│   └── glm.ts           # GLM API client
-├── classes/
-│   └── MessageHistory.ts # Message history management
-└── tools/
-    └── prompt.ts        # AI prompt builder
+  character.json          # Character definition
+  config.ts              # Configuration
+  index.ts              # Main bot logic
+  api/llm.ts           # LLM API client
+  classes/MessageHistory.ts  # Message handling
+  utils/tokenCounter.ts     # Token counting
+  tools/prompt.ts          # Prompt building
 ```
-
-## Troubleshooting
-
-### Bot doesn't respond
-- Check that the bot is online in Discord
-- Verify the channel ID is correct
-- Ensure Message Content Intent is enabled
-- Check the console for errors
-
-### "Cannot find module" errors
-- Run `npm install` to install dependencies
-- Make sure you've built the project with `npm run build`
-
-### API errors
-- Verify your GLM_API_KEY is correct
-- Check your API quota/limits
-- Ensure the GLM_BASE_URL is correct
 
 ## License
 
-ISC
+GPL-3.0
+
+This project is licensed under the GNU General Public License v3.0. You are free to use, modify, and distribute this software, including for commercial purposes, as long as any derivative works are also released under GPL-3.0 and the source code is made publicly available.
+
+See the [LICENSE](LICENSE) file for details.

@@ -5,42 +5,63 @@ export interface HistoryMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: Date;
-  username?: string; // Discord display name (nickname or global display name) of the message author
+  username?: string; // Discord name of the message author
+}
+
+/**
+ * Replace Discord mentions (<@userid>) with display names
+ */
+async function replaceMentionsWithNames(content: string, message: Message): Promise<string> {
+  let processedContent = content;
+
+  // Match user mentions: <@userid> or <@!userid>
+  const mentionPattern = /<@!?(\d+)>/g;
+  const mentions = Array.from(content.matchAll(mentionPattern));
+
+  for (const match of mentions) {
+    const userId = match[1];
+    const mentionText = match[0];
+
+    try {
+      // Try to get the member from the guild
+      if (message.guild) {
+        const member = await message.guild.members.fetch(userId);
+        const displayName = member.displayName || member.user.displayName || member.user.username;
+        processedContent = processedContent.replace(mentionText, `@${displayName}`);
+      }
+    } catch (error) {
+      // If we can't fetch the user, leave the mention as-is
+      console.warn(`Could not resolve mention for user ${userId}`);
+    }
+  }
+
+  return processedContent;
 }
 
 /**
  * Fetches message history from a Discord channel
  */
-export async function fetchMessageHistory(
-  message: Message,
-  limit: number,
-  characterName: string
-): Promise<HistoryMessage[]> {
+export async function fetchMessageHistory(message: Message, limit: number): Promise<HistoryMessage[]> {
   const messages: HistoryMessage[] = [];
 
   try {
-    // Fetch messages before the current one
     const fetchedMessages = await message.channel.messages.fetch({
       limit: limit,
       before: message.id,
     });
 
-    // Convert Discord messages to our format
-    const sortedMessages = Array.from(fetchedMessages.values())
-      .sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+    const sortedMessages = Array.from(fetchedMessages.values()).sort((a, b) => a.createdTimestamp - b.createdTimestamp);
 
     for (const msg of sortedMessages) {
-      // Skip bot's own messages that are system-like or empty
-      if (msg.author.bot && msg.content.trim() === "") {
-        continue;
-      }
+      if (msg.author.bot && msg.content.trim() === "") continue;
+
+      const processedContent = await replaceMentionsWithNames(msg.content, msg);
 
       messages.push({
         id: msg.id,
         role: msg.author.bot ? "assistant" : "user",
-        content: msg.content,
+        content: processedContent,
         createdAt: msg.createdAt,
-        // Use display name (server nickname) if available, otherwise fall back to global display name, then username
         username: msg.member?.displayName || msg.author.displayName || msg.author.username,
       });
     }
@@ -56,21 +77,14 @@ export async function fetchMessageHistory(
  */
 export function formatMessagesForAI(
   messages: HistoryMessage[],
-  currentUserName: string,
-  characterName: string
+  currentUserName: string
 ): Array<{ role: "user" | "assistant"; content: string }> {
   return messages.map((msg) => {
     let content = msg.content;
 
-    // For user messages, prepend the actual username from the message
     if (msg.role === "user" && msg.username) {
-      // If this is the current user responding, mark them as {{user}}
-      if (msg.username === currentUserName) {
-        content = `{{user}}: ${content}`;
-      } else {
-        // Otherwise, use their actual Discord username
-        content = `${msg.username}: ${content}`;
-      }
+      if (msg.username === currentUserName) content = `{{user}}: ${content}`;
+      else content = `${msg.username}: ${content}`;
     }
 
     return {

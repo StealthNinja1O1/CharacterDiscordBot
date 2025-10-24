@@ -1,4 +1,4 @@
-import { DEFAULT_PERSONA, DEFAULT_PRESET } from "../constants.js";
+import { DEFAULT_PRESET } from "../config.js";
 
 interface Message {
   id: string;
@@ -18,14 +18,7 @@ interface Character {
   mesExample?: string | null;
 }
 
-interface Persona {
-  id: string;
-  name: string;
-  description: string;
-}
-
 interface Preset {
-  id: string;
   name: string;
   prompt_template: string;
   inject_description: boolean;
@@ -50,61 +43,30 @@ interface BuildPromptOptions {
   character: Character;
   messages: Message[];
   preset?: Preset | null;
-  persona?: Persona | null;
   userName?: string;
 }
 
-export function buildAIRequest({
-  character,
-  messages,
-  preset,
-  persona,
-  userName = "User",
-}: BuildPromptOptions): AIRequestBody {
-  // Use default preset from constants if none provided
-
-  const defaultPreset: Preset = {
-    id: "default",
-    name: DEFAULT_PRESET.name,
-    prompt_template: DEFAULT_PRESET.prompt_template,
-    inject_description: DEFAULT_PRESET.inject_description,
-    inject_examples: DEFAULT_PRESET.inject_examples,
-    override_description: DEFAULT_PRESET.override_description,
-    override_examples: DEFAULT_PRESET.override_examples,
-    model: DEFAULT_PRESET.model,
-    temperature: DEFAULT_PRESET.temperature,
-  };
-
-  const activePreset = preset || defaultPreset;
-
-  // Process lorebooks to find triggered entries
-  // TODO: These will be used later to inject into the prompt
-  //   const lorebookEntries = processLorebooks(messages, books);
-
-  // Prepare replacement values
+export function buildAIRequest({ character, messages, userName = "User" }: BuildPromptOptions): AIRequestBody {
   const charName = character.name || character.displayName || "Character";
-  const charDescription = activePreset.inject_description
+  const charDescription = DEFAULT_PRESET.inject_description
     ? character.description
-    : activePreset.override_description || "";
+    : DEFAULT_PRESET.override_description || "";
 
-  const charExamples = activePreset.inject_examples ? character.mesExample || "" : activePreset.override_examples || "";
-
-  const personaDescription = persona ? persona.description : DEFAULT_PERSONA.description;
+  const charExamples = DEFAULT_PRESET.inject_examples
+    ? character.mesExample || ""
+    : DEFAULT_PRESET.override_examples || "";
 
   // Build replacements object
   const replacements: Record<string, string> = {
-    persona: personaDescription,
     description: charDescription,
-    mesExamples: charExamples, // TODO: parse these properly
+    mesExamples: charExamples, // TODO: parse these properly, but it sort of works for now
     // order matters. since the description and examples may contain {{user}} or {{char}}
-    user: persona?.name || userName || "User",
+    user: userName || "User",
     char: charName,
   };
 
-  // Process the preset template
-  const systemPrompt = replacePlaceholders(activePreset.prompt_template, replacements);
+  const systemPrompt = replacePlaceholders(DEFAULT_PRESET.prompt_template, replacements);
 
-  // Build the messages array
   const aiMessages: Array<{
     role: "system" | "user" | "assistant";
     content: string;
@@ -123,17 +85,15 @@ export function buildAIRequest({
     });
   });
 
-  // Convert temperature from 0-100 scale to 0.0-1.0 if needed
-  const temperature = activePreset.temperature > 1 ? activePreset.temperature / 100 : activePreset.temperature;
+  const temperature = DEFAULT_PRESET.temperature > 1 ? DEFAULT_PRESET.temperature / 100 : DEFAULT_PRESET.temperature;
 
   // replace all  {{user}} and {{char}} in the messages content
   aiMessages.forEach((msg) => {
     msg.content = replacePlaceholders(msg.content, replacements);
   });
-  console.log("AI Request Messages:", aiMessages);
 
   return {
-    model: activePreset.model,
+    model: DEFAULT_PRESET.model,
     messages: aiMessages,
     temperature,
     character: character.id,

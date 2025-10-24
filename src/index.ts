@@ -13,17 +13,15 @@ import {
 import { readFileSync } from "fs";
 import { discordConfig } from "./config.js";
 import { buildAIRequest } from "./tools/prompt.js";
-import { generateResponse } from "./api/glm.js";
+import { generateResponse } from "./api/llm.js";
 import { fetchMessageHistory, formatMessagesForAI } from "./classes/MessageHistory.js";
-import { countTokens, countMessageTokens } from "./utils/tokenCounter.js";
+import { countTokens } from "./utils/tokenCounter.js";
 
-// Load character from JSON
 let character: any;
 try {
   const characterData = readFileSync("./src/character.json", "utf-8");
   const parsed = JSON.parse(characterData);
   character = {
-    id: "character",
     name: parsed.data.name,
     description: parsed.data.description,
     mesExample: parsed.data.mes_example,
@@ -33,12 +31,10 @@ try {
   process.exit(1);
 }
 
-// Bot state
 let randomResponsesEnabled = true;
 let messageCounter = 0;
-let isBusy = false; // Track if bot is currently generating a response
+let isBusy = false;
 
-// Create Discord client
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
@@ -67,7 +63,6 @@ async function registerCommands() {
   }
 }
 
-// Handle slash commands
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -92,19 +87,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// Check if bot should respond
 function shouldRespond(message: Message): boolean {
-  // Don't respond if already busy generating a response
   if (isBusy) return false;
 
   // Don't respond to self
   if (message.author.id === client.user?.id) return false;
 
   // Don't respond to other bots
-  if (message.author.bot) return false;
+  if (message.author.bot && discordConfig.ignoreOtherBots) return false;
 
   // Only respond in the configured channel
-  if (message.channelId !== discordConfig.channelId) return false;
+  if (message.channelId !== discordConfig.channelId && discordConfig.channelId) return false;
 
   // Check if bot is mentioned
   if (message.mentions.has(client.user!.id)) return true;
@@ -112,6 +105,10 @@ function shouldRespond(message: Message): boolean {
   // Check if character name is in the message
   const characterName = character.name.toLowerCase();
   if (message.content.toLowerCase().includes(characterName)) return true;
+
+  // Check for trigger keywords
+  for (const keyword of discordConfig.triggerKeywords)
+    if (message.content.toLowerCase().includes(keyword.toLowerCase())) return true;
 
   // Random response
   if (randomResponsesEnabled) {
@@ -122,38 +119,60 @@ function shouldRespond(message: Message): boolean {
   return false;
 }
 
-// Generate AI response
+/**
+ * Replace Discord mentions (<@userid>) with display names in a message
+ */
+async function replaceMentionsWithNames(content: string, message: Message): Promise<string> {
+  let processedContent = content;
+
+  // Match user mentions: <@userid> or <@!userid>
+  const mentionPattern = /<@!?(\d+)>/g;
+  const mentions = Array.from(content.matchAll(mentionPattern));
+
+  for (const match of mentions) {
+    const userId = match[1];
+    const mentionText = match[0];
+
+    try {
+      // Try to get the member from the guild
+      if (message.guild) {
+        const member = await message.guild.members.fetch(userId);
+        const displayName = member.displayName || member.user.displayName || member.user.username;
+        processedContent = processedContent.replace(mentionText, `@${displayName}`);
+      }
+    } catch (error) {
+      // If we can't fetch the user, leave the mention as-is
+      console.warn(`Could not resolve mention for user ${userId}`);
+    }
+  }
+
+  return processedContent;
+}
+
 async function generateAIResponse(message: Message): Promise<string> {
   try {
-    // Get display name (server nickname > global display name > username)
-    console.log(message)
     const userDisplayName = message.author.displayName || message.author.username;
-    
-    // Fetch message history
-    const history = await fetchMessageHistory(message, discordConfig.maxHistoryMessages, character.name);
+    const history = await fetchMessageHistory(message, discordConfig.maxHistoryMessages);
+    const formattedHistory = formatMessagesForAI(history, userDisplayName);
 
-    // Format history for AI
-    const formattedHistory = formatMessagesForAI(history, userDisplayName, character.name);
+    // Replace mentions in the current message
+    const processedContent = await replaceMentionsWithNames(message.content, message);
 
-    // Add current message
     formattedHistory.push({
       role: "user",
-      content: `{{user}}: ${message.content}`,
+      content: `{{user}}: ${processedContent}`,
     });
 
-    // Build initial AI request to get system prompt
     const initialRequest = buildAIRequest({
       character,
       messages: [],
       userName: userDisplayName,
     });
 
-    // Count system prompt tokens
     const systemPromptTokens = countTokens(initialRequest.messages[0].content);
     const maxTokens = discordConfig.maxContextTokens;
     let availableTokens = maxTokens - systemPromptTokens;
 
-    // Trim messages to fit within token limit (keep newest messages)
     const trimmedMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
 
     // Start from the most recent message and work backwards
@@ -161,22 +180,12 @@ async function generateAIResponse(message: Message): Promise<string> {
       const msg = formattedHistory[i];
       const msgTokens = countTokens(msg.content) + countTokens(msg.role) + 4;
 
-      if (availableTokens - msgTokens < 0 && trimmedMessages.length > 0) {
-        // Would exceed limit, stop here
-        break;
-      }
+      if (availableTokens - msgTokens < 0 && trimmedMessages.length > 0) break;
 
       availableTokens -= msgTokens;
-      trimmedMessages.unshift(msg); // Add to beginning to maintain order
+      trimmedMessages.unshift(msg);
     }
 
-    console.log(
-      `📊 Token usage: System=${systemPromptTokens}, Messages=${
-        maxTokens - systemPromptTokens - availableTokens
-      }, Total=${maxTokens - availableTokens}/${maxTokens}`
-    );
-
-    // Build final AI request with trimmed messages
     const aiRequest = buildAIRequest({
       character,
       messages: trimmedMessages.map((msg, index) => ({
@@ -188,7 +197,6 @@ async function generateAIResponse(message: Message): Promise<string> {
       userName: userDisplayName,
     });
 
-    // Generate response
     const response = await generateResponse(aiRequest.model, aiRequest.messages, aiRequest.temperature);
 
     return response;
@@ -201,14 +209,11 @@ async function generateAIResponse(message: Message): Promise<string> {
 // Handle messages
 client.on(Events.MessageCreate, async (message: Message) => {
   if (!shouldRespond(message)) return;
-
-  // Set busy flag
   isBusy = true;
 
   let typingInterval: NodeJS.Timeout | null = null;
 
   try {
-    // Start continuous typing indicator (Discord typing lasts ~10 seconds, so we refresh it every 8 seconds)
     if ("sendTyping" in message.channel) {
       await message.channel.sendTyping();
       typingInterval = setInterval(async () => {
@@ -216,53 +221,40 @@ client.on(Events.MessageCreate, async (message: Message) => {
           try {
             await message.channel.sendTyping();
           } catch (error) {
-            // Ignore errors from typing (e.g., if channel becomes unavailable)
+            // Ignore errors from typing
           }
         }
       }, 8000);
     }
 
-    // Generate response
     const response = await generateAIResponse(message);
 
-    // Stop typing indicator
-    if (typingInterval) {
-      clearInterval(typingInterval);
-    }
+    if (typingInterval) clearInterval(typingInterval);
 
-    // Send response
     if (response && response.trim()) {
       // Split long messages if needed (Discord has a 2000 character limit)
       const chunks = response.match(/[\s\S]{1,2000}/g) || [];
-      for (const chunk of chunks) {
-        await message.reply(chunk);
-      }
+      for (const chunk of chunks) await message.reply(chunk);
     }
   } catch (error) {
-    // Stop typing indicator on error
-    if (typingInterval) {
-      clearInterval(typingInterval);
-    }
+    if (typingInterval) clearInterval(typingInterval);
+
     console.error("Error handling message:", error);
     await message.reply("*Something went wrong... The static consumes my words.*");
   } finally {
-    // Always clear busy flag when done (success or error)
     isBusy = false;
   }
 });
 
-// Bot ready event
 client.once(Events.ClientReady, async () => {
-  console.log(`✅ Logged in as ${client.user?.tag}`);
-  console.log(`📝 Character: ${character.name}`);
-  console.log(`📢 Monitoring channel: ${discordConfig.channelId}`);
-  console.log(`🎲 Random response rate: 1 in ${discordConfig.randomResponseRate}`);
+  console.log(`Logged in as ${client.user?.tag}`);
+  console.log(`Character: ${character.name}`);
+  console.log(`Monitoring channel: ${discordConfig.channelId}`);
+  console.log(`Random response rate: 1 in ${discordConfig.randomResponseRate}`);
 
-  // Register slash commands
   await registerCommands();
 });
 
-// Login
 client.login(discordConfig.botToken).catch((error) => {
   console.error("Failed to login:", error);
   process.exit(1);

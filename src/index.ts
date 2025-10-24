@@ -25,7 +25,12 @@ try {
     name: parsed.data.name,
     description: parsed.data.description,
     mesExample: parsed.data.mes_example,
+    depthPrompt: parsed.data?.extensions?.depth_prompt || null,
   };
+  if (character.depthPrompt && (!character.depthPrompt.depth || !character.depthPrompt.prompt)) {
+    console.warn("Invalid depth prompt configuration in character.json. Disabling depth prompt.");
+    character.depthPrompt = null;
+  }
 } catch (error) {
   console.error("Error loading character.json:", error);
   process.exit(1);

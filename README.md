@@ -134,6 +134,7 @@ Edit `src/character.json` with your character. The bot uses only these fields:
 - `data.name` - Character name
 - `data.description` - Personality and background
 - `data.mes_example` - Example dialogue
+- `data.extensions.depth_prompt` - Depth prompt
 
 Example:
 ```json

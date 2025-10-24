@@ -16,6 +16,10 @@ interface Character {
   displayName?: string | null;
   description: string;
   mesExample?: string | null;
+  depthPrompt?: {
+    depth: number;
+    prompt: string;
+  } | null;
 }
 
 interface Preset {
@@ -65,15 +69,13 @@ export function buildAIRequest({ character, messages, userName = "User" }: Build
     char: charName,
   };
 
-  const systemPrompt = replacePlaceholders(DEFAULT_PRESET.prompt_template, replacements);
-
   const aiMessages: Array<{
     role: "system" | "user" | "assistant";
     content: string;
   }> = [
     {
       role: "system",
-      content: systemPrompt,
+      content: DEFAULT_PRESET.prompt_template,
     },
   ];
 
@@ -85,12 +87,41 @@ export function buildAIRequest({ character, messages, userName = "User" }: Build
     });
   });
 
+  // Insert depth_prompt if it exists
+  if (character.depthPrompt && character.depthPrompt.depth >= 0) {
+    const depth = character.depthPrompt.depth;
+
+    // Count backwards through messages, treating consecutive assistant messages as one unit
+    let depthCount = 0;
+    let targetIndex = -1;
+    let lastRole: string | null = null;
+    for (let i = aiMessages.length - 1; i > 0; i--) {
+      const currentRole = aiMessages[i].role;
+      if (currentRole === "user" || (currentRole === "assistant" && lastRole !== "assistant")) {
+        if (depthCount === depth) {
+          targetIndex = i;
+          break;
+        }
+        depthCount++;
+      }
+      lastRole = currentRole;
+    }
+
+    // If depth is too large (no message at that position), append to system prompt instead
+    if (targetIndex <= 0) {
+      aiMessages[0].content += "\n" + character.depthPrompt.prompt;
+    } else {
+      aiMessages[targetIndex].content += "\n" + character.depthPrompt.prompt;
+    }
+  }
+
   const temperature = DEFAULT_PRESET.temperature > 1 ? DEFAULT_PRESET.temperature / 100 : DEFAULT_PRESET.temperature;
 
   // replace all  {{user}} and {{char}} in the messages content
   aiMessages.forEach((msg) => {
     msg.content = replacePlaceholders(msg.content, replacements);
   });
+  // console.log(aiMessages, "\n\n\n\n");
 
   return {
     model: DEFAULT_PRESET.model,

@@ -67,7 +67,7 @@ TRIGGER_KEYWORDS=optional,comma,separated,keywords,assistant,bot,
 - `DISCORD_ALLOWED_USERS` - User IDs allowed to use admin commands
 
 **Behavior:**
-- `RANDOM_RESPONSE_RATE` - Responds randomly to 1 in X messages (0 to disable)
+- `RANDOM_RESPONSE_RATE` - Responds randomly to 1 in X messages (-1 to disable)
 - `MAX_HISTORY_MESSAGES` - Number of recent messages to fetch
 - `MAX_CONTEXT_TOKENS` - Maximum tokens for context (includes system prompt)
 - `IGNORE_OTHER_BOTS` - Whether to ignore messages from other bots
@@ -134,9 +134,10 @@ Edit `src/character.json` with your character. The bot uses only these fields:
 - `data.name` - Character name
 - `data.description` - Personality and background
 - `data.mes_example` - Example dialogue
-- `data.extensions.depth_prompt` - Depth prompt
+- `data.extensions.depth_prompt` - Depth prompt (optional)
+- `data.character_book` - Attached lorebook from chub (optional)
 
-Example:
+Example: (outdated)
 ```json
 {
   "spec": "chara_card_v2",

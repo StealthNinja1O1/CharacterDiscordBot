@@ -1,4 +1,7 @@
 import { DEFAULT_PRESET } from "../config.js";
+import { CharacterBook } from "../types.js";
+import { processLorebook } from "./lorebook.js";
+import { parseLorebook } from "./normalizeLorebook.js";
 
 interface Message {
   id: string;
@@ -20,6 +23,7 @@ interface Character {
     depth: number;
     prompt: string;
   } | null;
+  character_book?: any;
 }
 
 interface Preset {
@@ -50,7 +54,11 @@ interface BuildPromptOptions {
   userName?: string;
 }
 
-export function buildAIRequest({ character, messages, userName = "User" }: BuildPromptOptions): AIRequestBody {
+export async function buildAIRequest({
+  character,
+  messages,
+  userName = "User",
+}: BuildPromptOptions): Promise<AIRequestBody> {
   const charName = character.name || character.displayName || "Character";
   const charDescription = DEFAULT_PRESET.inject_description
     ? character.description
@@ -117,11 +125,18 @@ export function buildAIRequest({ character, messages, userName = "User" }: Build
 
   const temperature = DEFAULT_PRESET.temperature > 1 ? DEFAULT_PRESET.temperature / 100 : DEFAULT_PRESET.temperature;
 
+  if (character.character_book) {
+    const book = await parseLorebook(character.character_book);
+    const { list } = processLorebook(messages, book);
+    if (list.length > 0) aiMessages[0].content += "\n" + list.map((entry) => `${entry.content}`).join("\n") + "\n";
+  }
+
   // replace all  {{user}} and {{char}} in the messages content
   aiMessages.forEach((msg) => {
     msg.content = replacePlaceholders(msg.content, replacements);
   });
-  // console.log(aiMessages, "\n\n\n\n");
+
+  // console.log(aiMessages[0].content.slice(-5000));
 
   return {
     model: DEFAULT_PRESET.model,

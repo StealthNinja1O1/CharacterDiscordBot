@@ -26,6 +26,7 @@ try {
     description: parsed.data.description,
     mesExample: parsed.data.mes_example,
     depthPrompt: parsed.data?.extensions?.depth_prompt || null,
+    character_book: parsed.data?.character_book || null,
   };
   if (character.depthPrompt && (!character.depthPrompt.depth || !character.depthPrompt.prompt)) {
     console.warn("Invalid depth prompt configuration in character.json. Disabling depth prompt.");
@@ -116,7 +117,7 @@ function shouldRespond(message: Message): boolean {
     if (message.content.toLowerCase().includes(keyword.toLowerCase())) return true;
 
   // Random response
-  if (randomResponsesEnabled) {
+  if (randomResponsesEnabled && discordConfig.randomResponseRate > 0) {
     messageCounter++;
     if (Math.random() * discordConfig.randomResponseRate < 1) return true;
   }
@@ -168,7 +169,7 @@ async function generateAIResponse(message: Message): Promise<string> {
       content: `{{user}}: ${processedContent}`,
     });
 
-    const initialRequest = buildAIRequest({
+    const initialRequest = await buildAIRequest({
       character,
       messages: [],
       userName: userDisplayName,
@@ -191,7 +192,7 @@ async function generateAIResponse(message: Message): Promise<string> {
       trimmedMessages.unshift(msg);
     }
 
-    const aiRequest = buildAIRequest({
+    const aiRequest = await buildAIRequest({
       character,
       messages: trimmedMessages.map((msg, index) => ({
         id: `msg-${index}`,

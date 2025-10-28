@@ -128,7 +128,7 @@ export async function buildAIRequest({
   if (character.character_book) {
     const book = await parseLorebook(character.character_book);
     const { list } = processLorebook(messages, book);
-    if (list.length > 0) aiMessages[0].content += "\n" + list.map((entry) => `${entry.content}`).join("\n") + "\n";
+    if (list.length > 0) aiMessages[0].content += "\n" + list.map((entry) => `${entry.content}`).join("\n ") + "\n";
   }
 
   // replace all  {{user}} and {{char}} in the messages content

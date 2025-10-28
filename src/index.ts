@@ -108,13 +108,16 @@ function shouldRespond(message: Message): boolean {
   // Check if bot is mentioned
   if (message.mentions.has(client.user!.id)) return true;
 
-  // Check if character name is in the message
+  // Check if character name is in the message (full word match only)
   const characterName = character.name.toLowerCase();
-  if (message.content.toLowerCase().includes(characterName)) return true;
+  const characterNameRegex = new RegExp(`\\b${characterName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+  if (characterNameRegex.test(message.content)) return true;
 
-  // Check for trigger keywords
-  for (const keyword of discordConfig.triggerKeywords)
-    if (message.content.toLowerCase().includes(keyword.toLowerCase())) return true;
+  // Check for trigger keywords (full word match only)
+  for (const keyword of discordConfig.triggerKeywords) {
+    const keywordRegex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    if (keywordRegex.test(message.content)) return true;
+  }
 
   // Random response
   if (randomResponsesEnabled && discordConfig.randomResponseRate > 0) {

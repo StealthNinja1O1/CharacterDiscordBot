@@ -21,7 +21,7 @@ export const discordConfig: DiscordConfig = {
 };
 
 if (!discordConfig.botToken) throw new Error("DISCORD_BOT_TOKEN is not configured in .env file");
-if (!discordConfig.channelId) throw new Error("DISCORD_CHANNEL_ID is not configured in .env file");
+// if (!discordConfig.channelId) throw new Error("DISCORD_CHANNEL_ID is not configured in .env file");
 
 export const DEFAULT_PRESET = {
   name: "Default",

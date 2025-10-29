@@ -37,27 +37,31 @@ Configuration can be done via environment variables (.env file) or by editing `s
 
 ```env
 # LLM API Configuration
-LLM_API_KEY=your_api_key_here
+LLM_API_KEY=
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=gpt-4o
 
 # Discord Bot Configuration
-DISCORD_BOT_TOKEN=your_discord_bot_token
-DISCORD_CHANNEL_ID=your_channel_id
-DISCORD_ALLOWED_USERS=comma,separated,user,ids
+DISCORD_BOT_TOKEN=
+DISCORD_CHANNEL_ID=
+DISCORD_ALLOWED_USERS=1402920090344755323,1234567890
 
-# Bot Behavior
-RANDOM_RESPONSE_RATE=50
+# Bot Behavior Settings
+RANDOM_RESPONSE_RATE=1 # Set to -1 to disable random responses
 MAX_HISTORY_MESSAGES=30
 MAX_CONTEXT_TOKENS=20000
 IGNORE_OTHER_BOTS=true
-TRIGGER_KEYWORDS=optional,comma,separated,keywords,assistant,bot,
+TRIGGER_KEYWORDS=assistant,bot,helper,chatgpt
+ADD_TIMESTAMPS=true # Add timestamps to messages
+MIN_RESPONSE_INTERVAL_SECONDS=0
+REPLY_TO_MENTIONS=true
+MENTION_TRIGGER_ALLOWED_USERS=1402920090344755323,1234567890
 
 # Lorebook
 ALLOW_LOREBOOK_EDITING=false
-
 # Character File Path
 CHARACTER_FILE_PATH=./character.json
+
 ```
 
 ### Configuration Options
@@ -78,6 +82,9 @@ CHARACTER_FILE_PATH=./character.json
 - `MAX_CONTEXT_TOKENS` - Maximum tokens for context (includes system prompt)
 - `IGNORE_OTHER_BOTS` - Whether to ignore messages from other bots
 - `TRIGGER_KEYWORDS` - Additional keywords that trigger responses (comma-separated)
+- `MIN_RESPONSE_INTERVAL_SECONDS` - Minimum time in seconds to wait before replying again in the same channel (default: 0)
+- `REPLY_TO_MENTIONS` - If `false`, the bot will not reply when directly mentioned, only by allowed people
+- `MENTION_TRIGGER_ALLOWED_USERS` - Comma-separated list of user IDs allowed to trigger mention/trigger keyword replies even if REPLY_TO_MENTIONS is set to false.
 
 **Lorebook:**
 - `ALLOW_LOREBOOK_EDITING` - Allow the character to update their own lorebook entries (true/false)

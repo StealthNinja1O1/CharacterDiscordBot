@@ -49,7 +49,7 @@ export async function buildAIRequest({
   messages.forEach((msg) => {
     aiMessages.push({
       role: msg.role,
-      content: msg.content,
+      content: msg.content + (discordConfig.addTimestamps ? `\n[${msg?.createdAt?.toISOString() || "unknown time"}]` : ""),
     });
   });
 
@@ -84,14 +84,18 @@ export async function buildAIRequest({
   const temperature = DEFAULT_PRESET.temperature > 1 ? DEFAULT_PRESET.temperature / 100 : DEFAULT_PRESET.temperature;
 
   // Build lorebook editing instructions if enabled
-  const lorebookEditingInstructions = discordConfig.allowLoreboookEditing
-    ? `\n{Lorebook Editing}\nYou can update existing lorebook entries about people or things you learn. To update an entry, use: createOrEditLore("EntryName", "new content here"), dont add backticks or newlines, Just write it at the bottom of your response.\nYou can also add entries but please only update entries that you can see the value of. This command will be hidden from users and yourself.\nAvailable entries: ${character.character_book?.entries?.map((e: any) => e.name).join(", ") || "none"}\n`
+  const lorebookEditingInstructions = discordConfig.allowLorebookEditing
+    ? `\n{Lorebook Editing}\nYou can update existing lorebook entries about people or things you learn. Do this constently when you learn something new about a user. To update an entry, use: createOrEditLore("EntryName", "new content here"), dont add backticks or newlines, Just write it at the bottom of your response.\nYou can also add entries but please only update entries that you can see the value of. This command will be hidden from users and yourself.\nAvailable entries: ${
+        character.character_book?.entries?.map((e: any) => e.name).join(", ") || "none"
+      }\n`
     : "";
 
-      if (character.character_book) {
+  if (character.character_book) {
     const book = await parseLorebook(character.character_book);
     const { list } = processLorebook(messages, book);
-    if (list.length > 0) aiMessages[0].content += "\n" + list.map((entry) => `Lorebook entry "${entry?.name}"; content: ${entry.content}`).join("\n ") + "\n";
+    if (list.length > 0)
+      aiMessages[0].content +=
+        "\n" + list.map((entry) => `Lorebook entry "${entry?.name}"; content: ${entry.content}`).join("\n ") + "\n";
   }
 
   // Build replacements object including lorebook

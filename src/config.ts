@@ -7,8 +7,12 @@ export interface DiscordConfig {
   maxContextTokens: number;
   ignoreOtherBots: boolean;
   triggerKeywords: string[];
-  allowLoreboookEditing: boolean;
+  allowLorebookEditing: boolean;
   characterFilePath: string;
+  addTimestamps: boolean;
+  minResponseIntervalSeconds: number;
+  replyToMentions: boolean;
+  mentionTriggerAllowedUserIds: string[];
 }
 
 export const discordConfig: DiscordConfig = {
@@ -20,11 +24,16 @@ export const discordConfig: DiscordConfig = {
   maxContextTokens: parseInt(process.env.MAX_CONTEXT_TOKENS || "20000", 10),
   ignoreOtherBots: process.env.IGNORE_OTHER_BOTS === "true" || true,
   triggerKeywords: (process.env.TRIGGER_KEYWORDS || "").split(",").filter(Boolean),
-  allowLoreboookEditing: process.env.ALLOW_LOREBOOK_EDITING === "true" || false,
+  allowLorebookEditing: process.env.ALLOW_LOREBOOK_EDITING === "true" || false,
   characterFilePath: process.env.CHARACTER_FILE_PATH || "./character.json",
+  addTimestamps: process.env.ADD_TIMESTAMPS === "true" || false,
+  minResponseIntervalSeconds: parseInt(process.env.MIN_RESPONSE_INTERVAL_SECONDS || "0", 10),
+  replyToMentions: process.env.REPLY_TO_MENTIONS === "true" || true,
+  mentionTriggerAllowedUserIds: (process.env.MENTION_TRIGGER_ALLOWED_USERS || "").split(",").filter(Boolean),
 };
 
 if (!discordConfig.botToken) throw new Error("DISCORD_BOT_TOKEN is not configured in .env file");
+// doesnt have to be locked to 1 channel, so commented out
 // if (!discordConfig.channelId) throw new Error("DISCORD_CHANNEL_ID is not configured in .env file");
 
 export const DEFAULT_PRESET = {

@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  bot:
+    image: stealthninja1o1/characterdiscordbot:latest
+    container_name: characterdiscordbot
+    restart: unless-stopped
+    command: ["npm", "run", "start"]
+    environment:
+      - LLM_API_KEY=
+      - LLM_BASE_URL=https://api.openai.com/v1
+      - LLM_MODEL=gpt-4o
+      - DISCORD_BOT_TOKEN=
+      - DISCORD_CHANNEL_ID=
+      - DISCORD_ALLOWED_USERS=1402920090344755323,1234567890
+      - RANDOM_RESPONSE_RATE=1 # Set to -1 to disable random responses
+      - MAX_HISTORY_MESSAGES=30
+      - MAX_CONTEXT_TOKENS=20000
+      - IGNORE_OTHER_BOTS=true
+      - TRIGGER_KEYWORDS=assistant,bot,helper,chatgpt
+      - ADD_TIMESTAMPS=true # Add timestamps to messages
+      - MIN_RESPONSE_INTERVAL_SECONDS=0
+      - REPLY_TO_MENTIONS=true
+      - MENTION_TRIGGER_ALLOWED_USERS=1402920090344755323,1234567890
+      - ALLOW_LOREBOOK_EDITING=false
+    volumes:
+      - ./character.json:/home/node/app/character.json

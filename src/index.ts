@@ -51,7 +51,10 @@ if (!character) {
 
 let randomResponsesEnabled = true;
 let messageCounter = 0;
-let isBusy = false;
+// Keep the isBusy flag per channel
+let isBusy = new Map<string, boolean>();
+// Track last response timestamp per channel (ms since epoch)
+let lastResponseTimestamp = new Map<string, number>();
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
@@ -106,7 +109,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 function shouldRespond(message: Message): boolean {
-  if (isBusy) return false;
+  const channelid = message.channelId;
+  if (isBusy.get(channelid)) return false;
+
+  const canUserMention =
+    discordConfig.replyToMentions || discordConfig.mentionTriggerAllowedUserIds.includes(message.author.id);
+
+  // Enforce minimum interval between responses in the same channel
+  const lastTs = lastResponseTimestamp.get(channelid) || 0;
+  const now = Date.now();
+  if (now - lastTs < discordConfig.minResponseIntervalSeconds * 1000) return false;
 
   // Don't respond to self
   if (message.author.id === client.user?.id) return false;
@@ -117,18 +129,21 @@ function shouldRespond(message: Message): boolean {
   // Only respond in the configured channel
   if (message.channelId !== discordConfig.channelId && discordConfig.channelId) return false;
 
-  // Check if bot is mentioned
-  if (message.mentions.has(client.user!.id)) return true;
+  // Only check for any type of mention/keyword triggers if allowed
+  if (canUserMention) {
+    // Check if bot is mentioned
+    if (message.mentions.has(client.user!.id)) return true;
 
-  // Check if character name is in the message (full word match only)
-  const characterName = character?.name.toLowerCase() || "";
-  const characterNameRegex = new RegExp(`\\b${characterName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-  if (characterNameRegex.test(message.content)) return true;
+    // Check if character name is in the message (full word match only)
+    const characterName = character?.name.toLowerCase() || "";
+    const characterNameRegex = new RegExp(`\\b${characterName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    if (characterNameRegex.test(message.content)) return true;
 
-  // Check for trigger keywords (full word match only)
-  for (const keyword of discordConfig.triggerKeywords) {
-    const keywordRegex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-    if (keywordRegex.test(message.content)) return true;
+    // Check for trigger keywords (full word match only)
+    for (const keyword of discordConfig.triggerKeywords) {
+      const keywordRegex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+      if (keywordRegex.test(message.content)) return true;
+    }
   }
 
   // Random response
@@ -230,7 +245,7 @@ async function generateAIResponse(message: Message): Promise<string> {
 // Handle messages
 client.on(Events.MessageCreate, async (message: Message) => {
   if (!shouldRespond(message)) return;
-  isBusy = true;
+  isBusy.set(message.channelId, true);
 
   let typingInterval: NodeJS.Timeout | null = null;
 
@@ -271,7 +286,9 @@ client.on(Events.MessageCreate, async (message: Message) => {
     console.error("Error handling message:", error);
     await message.reply("*Something went wrong... The static consumes my words.*");
   } finally {
-    isBusy = false;
+    isBusy.set(message.channelId, false);
+    // Update last response timestamp to enforce minimum interval
+    lastResponseTimestamp.set(message.channelId, Date.now());
   }
 });
 

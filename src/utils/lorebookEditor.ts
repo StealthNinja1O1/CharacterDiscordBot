@@ -13,7 +13,7 @@ export function processLorebookCommands(
   response: string,
   character: Character
 ): { cleanedResponse: string; edited: boolean; updatedCharacter: Character } {
-  if (!discordConfig.allowLoreboookEditing) {
+  if (!discordConfig.allowLorebookEditing) {
     return { cleanedResponse: response, edited: false, updatedCharacter: character };
   }
 

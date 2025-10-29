@@ -78,7 +78,7 @@ export async function fetchMessageHistory(message: Message, limit: number): Prom
 export function formatMessagesForAI(
   messages: HistoryMessage[],
   currentUserName: string
-): Array<{ role: "user" | "assistant"; content: string }> {
+): Array<{ role: "user" | "assistant"; content: string, createdAt: Date }> {
   return messages.map((msg) => {
     let content = msg.content;
 
@@ -90,6 +90,7 @@ export function formatMessagesForAI(
     return {
       role: msg.role,
       content: content,
+      createdAt: msg.createdAt,
     };
   });
 }

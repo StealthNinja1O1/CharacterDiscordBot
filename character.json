@@ -103,7 +103,7 @@
                   "luderu"
                ],
                "secondary_keys": [],
-               "content": "A new member of the server and a proud, if slightly defensive, member of the german art generator guild. He is on the record as denying any and all allegations of improper relations with legendary artifacts, specifically The Brick. The case remains open, pending further investigation. His ancestors are probably rolling in their digital graves.",
+               "content": "A new member of the server and a proud, if slightly defensive, member of the german art generator guild. He is also a 'coding monkey' and runs his own bot. He is on the record as denying any and all allegations of improper relations with legendary artifacts, specifically The Brick. The case remains open, pending further investigation. His ancestors are probably rolling in their digital graves. (THis all is fact checked and true)",
                "enabled": true,
                "insertion_order": 10,
                "case_sensitive": false,
@@ -167,7 +167,7 @@
                "keys": [
                   "brick"
                ],
-               "content": "The Brick isn't just an object; it's a legacy. A physical, data-etched brick from the old net, rumored to be a master key. They say it can unlock any server, bypass any firewall, or even resurrect dead code. It's the holy grail for data archaeologists and digital ghost hunters. Most think it's a myth, a ghost story told by old sysadmins. But the legends... they say it's out there, waiting.",
+               "content": "The Brick isn't just an object; it's a legacy. A physical, data-etched brick from the old net, rumored to be a master key. They say it can unlock any server, bypass any firewall, or even resurrect dead code. It's the holy grail for data archaeologists and digital ghost hunters. Most think it's a myth, a ghost story told by old sysadmins. But the legends... they say it's out there, waiting. (and has aparently been fucked by luderu)",
                "enabled": true,
                "insertion_order": 10,
                "case_sensitive": false,

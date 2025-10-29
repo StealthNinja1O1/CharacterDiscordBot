@@ -191,8 +191,49 @@ In Discord:
 - Use trigger keywords (if configured)
 - Random responses (if enabled)
 
-Admin commands:
-- `/togglerandom` - Enable/disable random responses (allowed users only)
+Slash commands (admin-only)
+
+The bot exposes a set of admin-only slash commands. Only users listed in `DISCORD_ALLOWED_USERS` may run these commands.
+
+- `/togglerandom`
+  - Description: Toggle whether the bot sends random, unsolicited responses.
+  - Usage: `/togglerandom`
+  - Notes: This flips the runtime flag; it does not persist to disk.
+
+- `/togglementions`
+  - Description: Toggle whether the bot replies when directly mentioned.
+  - Usage: `/togglementions`
+  - Notes: When disabled, mention triggers are ignored (except when a user is explicitly allowed via `MENTION_TRIGGER_ALLOWED_USERS`). This change is runtime-only.
+
+- `/togglebot`
+  - Description: Temporarily enable or disable the bot's response behavior.
+  - Usage: `/togglebot`
+  - Notes: This toggles a runtime 'enabled' flag. Prefer `min response interval` configuration for finer control.
+
+- `/update` (file upload)
+  - Description: Upload a new Character Card JSON to replace the active character definition.
+  - Usage: `/update file:<attachment>` (attach the character JSON file)
+  - Validation: The uploaded file is parsed and checked for required fields (`data.name` and `data.description`). If valid, the file is written to the path configured by `CHARACTER_FILE_PATH` and the in-memory character is reloaded immediately.
+  - Notes: The command overwrites the current character file. Consider enabling backups or adding a confirmation workflow if you want safer updates.
+
+- `/lorebook`
+  - Description: Browse and edit the character's lorebook entries interactively.
+  - Usage: `/lorebook`
+  - Behavior: Opens an ephemeral UI for the command user with paginated select menus (10 entries per page), Prev/Next navigation, and an Edit button which opens a modal for editing an entry's content. Submissions update `character.json` and the in-memory character immediately.
+  - Notes: Designed to scale to large lorebooks by paging entries. Only the invoking admin sees the UI and can make edits.
+
+- `/configure` (runtime configuration)
+  - Description: Change runtime behavior settings without restarting the bot.
+  - Usage: `/configure [random_response_rate] [max_history_messages] [max_context_tokens] [ignore_other_bots] [trigger_keywords] [add_timestamps] [min_response_interval_seconds]`
+  - Options:
+    - `random_response_rate` (integer) — RANDOM_RESPONSE_RATE (1 in N; 0 disables)
+    - `max_history_messages` (integer) — MAX_HISTORY_MESSAGES
+    - `max_context_tokens` (integer) — MAX_CONTEXT_TOKENS
+    - `ignore_other_bots` (boolean) — IGNORE_OTHER_BOTS
+    - `trigger_keywords` (string) — TRIGGER_KEYWORDS (comma-separated)
+    - `add_timestamps` (boolean) — ADD_TIMESTAMPS
+    - `min_response_interval_seconds` (integer) — MIN_RESPONSE_INTERVAL_SECONDS
+  - Notes: Changes are applied in-memory only. If you want persistent configuration across restarts, use a saved runtime config file (recommended) or persist to `.env` manually.
 
 ## Lorebook Editing (Optional Feature)
 

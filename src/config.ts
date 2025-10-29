@@ -49,6 +49,7 @@ export const DEFAULT_PRESET = {
 Text in {Curly brackets} marks the start of a subsection.
 
 Text in [square brackets] is a high priority system command. Follow the instructions inside with top precision.
+There are also timestamps in [square brackets], NEVER write them yourself or alter them, just use them as context.
 
 <rules>
 

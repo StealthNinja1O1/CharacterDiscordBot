@@ -1,0 +1,19 @@
+kind: pipeline
+type: docker
+name: default
+
+steps:
+- name: publish
+  image: plugins/docker
+  settings:
+    registry: docker.io
+    repo: docker.io/stealthninja1o1/characterdiscordbot
+    tags: latest
+    insecure: false
+    username:
+      from_secret: username
+    password:
+      from_secret: password
+  when:
+    event: push
+    branch: main

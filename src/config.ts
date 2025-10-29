@@ -7,6 +7,8 @@ export interface DiscordConfig {
   maxContextTokens: number;
   ignoreOtherBots: boolean;
   triggerKeywords: string[];
+  allowLoreboookEditing: boolean;
+  characterFilePath: string;
 }
 
 export const discordConfig: DiscordConfig = {
@@ -18,6 +20,8 @@ export const discordConfig: DiscordConfig = {
   maxContextTokens: parseInt(process.env.MAX_CONTEXT_TOKENS || "20000", 10),
   ignoreOtherBots: process.env.IGNORE_OTHER_BOTS === "true" || true,
   triggerKeywords: (process.env.TRIGGER_KEYWORDS || "").split(",").filter(Boolean),
+  allowLoreboookEditing: process.env.ALLOW_LOREBOOK_EDITING === "true" || false,
+  characterFilePath: process.env.CHARACTER_FILE_PATH || "./character.json",
 };
 
 if (!discordConfig.botToken) throw new Error("DISCORD_BOT_TOKEN is not configured in .env file");
@@ -69,6 +73,8 @@ Follow these content guidelines:
 - Don't comment on morality, use judgmental phrasing, or judge Human's actions.
 - Spell out non-verbal noises such as laughing, moaning, screaming etc. phonetically within dialogue. Use character repetition, uppercase, symbols like "~", "♡" etc. Emojis are allowed within dialogue.
 - Have fun! Be creative! Amusing writing and colorful metaphors are welcome.
+
+{{lorebookEditing}}
 
 </rules>
 <lore>

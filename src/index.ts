@@ -10,21 +10,25 @@ import {
   ChatInputCommandInteraction,
   PermissionFlagsBits,
 } from "discord.js";
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import { discordConfig } from "./config.js";
 import { buildAIRequest } from "./tools/prompt.js";
 import { generateResponse } from "./api/llm.js";
 import { fetchMessageHistory, formatMessagesForAI } from "./classes/MessageHistory.js";
 import { countTokens } from "./utils/tokenCounter.js";
+import { processLorebookCommands } from "./utils/lorebookEditor.js";
+import { Character } from "./models.js";
 
-let character: any;
+let character: Character;
 try {
-  const characterData = readFileSync("./src/character.json", "utf-8");
+  const filePath = discordConfig.characterFilePath;
+  if (!existsSync(filePath)) throw new Error("Character file not found");
+  const characterData = readFileSync(filePath, "utf-8");
   const parsed = JSON.parse(characterData);
   character = {
     name: parsed.data.name,
     description: parsed.data.description,
-    mesExample: parsed.data.mes_example,
+    mesExample: parsed.data.mes_example || "",
     depthPrompt: parsed.data?.extensions?.depth_prompt || null,
     character_book: parsed.data?.character_book || null,
   };
@@ -32,8 +36,16 @@ try {
     console.warn("Invalid depth prompt configuration in character.json. Disabling depth prompt.");
     character.depthPrompt = null;
   }
+  if (!character.name || !character.description) {
+    throw new Error("Character name or description missing in character file");
+  }
 } catch (error) {
   console.error("Error loading character.json:", error);
+  process.exit(1);
+}
+
+if (!character) {
+  console.error("Character data is null");
   process.exit(1);
 }
 
@@ -109,13 +121,13 @@ function shouldRespond(message: Message): boolean {
   if (message.mentions.has(client.user!.id)) return true;
 
   // Check if character name is in the message (full word match only)
-  const characterName = character.name.toLowerCase();
-  const characterNameRegex = new RegExp(`\\b${characterName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+  const characterName = character?.name.toLowerCase() || "";
+  const characterNameRegex = new RegExp(`\\b${characterName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
   if (characterNameRegex.test(message.content)) return true;
 
   // Check for trigger keywords (full word match only)
   for (const keyword of discordConfig.triggerKeywords) {
-    const keywordRegex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    const keywordRegex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
     if (keywordRegex.test(message.content)) return true;
   }
 
@@ -240,9 +252,17 @@ client.on(Events.MessageCreate, async (message: Message) => {
 
     if (typingInterval) clearInterval(typingInterval);
 
-    if (response && response.trim()) {
+    // Process any lorebook editing commands
+    const { cleanedResponse, edited, updatedCharacter } = processLorebookCommands(response, character);
+
+    if (edited) {
+      console.log("Lorebook was updated by the character.");
+      character = updatedCharacter; // Update the in-memory character object
+    }
+
+    if (cleanedResponse && cleanedResponse.trim()) {
       // Split long messages if needed (Discord has a 2000 character limit)
-      const chunks = response.match(/[\s\S]{1,2000}/g) || [];
+      const chunks = cleanedResponse.match(/[\s\S]{1,2000}/g) || [];
       for (const chunk of chunks) await message.reply(chunk);
     }
   } catch (error) {

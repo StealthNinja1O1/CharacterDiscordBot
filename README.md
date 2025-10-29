@@ -52,6 +52,12 @@ MAX_HISTORY_MESSAGES=30
 MAX_CONTEXT_TOKENS=20000
 IGNORE_OTHER_BOTS=true
 TRIGGER_KEYWORDS=optional,comma,separated,keywords,assistant,bot,
+
+# Lorebook
+ALLOW_LOREBOOK_EDITING=false
+
+# Character File Path
+CHARACTER_FILE_PATH=./character.json
 ```
 
 ### Configuration Options
@@ -71,7 +77,13 @@ TRIGGER_KEYWORDS=optional,comma,separated,keywords,assistant,bot,
 - `MAX_HISTORY_MESSAGES` - Number of recent messages to fetch
 - `MAX_CONTEXT_TOKENS` - Maximum tokens for context (includes system prompt)
 - `IGNORE_OTHER_BOTS` - Whether to ignore messages from other bots
-- `TRIGGER_KEYWORDS` - Additional keywords that trigger responses
+- `TRIGGER_KEYWORDS` - Additional keywords that trigger responses (comma-separated)
+
+**Lorebook:**
+- `ALLOW_LOREBOOK_EDITING` - Allow the character to update their own lorebook entries (true/false)
+
+**Character file:**
+- `CHARACTER_FILE_PATH` - File path for the character file (default: `./character.json`)
 
 ## Setting Up LLM API
 
@@ -174,6 +186,41 @@ In Discord:
 
 Admin commands:
 - `/togglerandom` - Enable/disable random responses (allowed users only)
+
+## Lorebook Editing (Optional Feature)
+
+If `ALLOW_LOREBOOK_EDITING=true` is set, the character can update their own lorebook entries based on conversations.
+
+### How It Works
+
+1. The character can update existing lorebook entries by using a special command in their response
+2. The command format: `createOrEditLore("EntryName", "new content here")`
+3. The command is automatically removed from the response before sending to Discord
+4. Only entries that already exist in the character_book can be updated
+5. Changes are saved directly to the character.json file
+
+### Use Cases
+
+- Character learns new information about Discord server members
+- Character updates facts about ongoing events or situations
+- Character maintains memory of important details across sessions
+
+### Example
+
+If your character has a lorebook entry named "SteakedGamer", the character can update it:
+
+```
+Character's internal response: "I see! createOrEditLore("SteakedGamer", "SteakedGamer is the creator who likes gaming and bot development.")"
+What Discord sees: "I see!"
+```
+
+The lorebook entry "SteakedGamer" is updated, and the command is hidden from users.
+
+### Security Notes
+
+- Characters can only update existing entries, not create new ones
+- Changes persist across bot restarts
+- You can disable this feature by setting `ALLOW_LOREBOOK_EDITING=false` or omitting it
 
 ## Project Structure
 

@@ -1,30 +1,7 @@
-import { DEFAULT_PRESET } from "../config.js";
-import { CharacterBook } from "../types.js";
+import { DEFAULT_PRESET, discordConfig } from "../config.js";
+import { Character, Message, AIRequestBody } from "../models.js";
 import { processLorebook } from "./lorebook.js";
 import { parseLorebook } from "./normalizeLorebook.js";
-
-interface Message {
-  id: string;
-  chatId?: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  createdAt?: Date;
-  parentId?: string | null;
-  variantIndex?: number;
-}
-
-interface Character {
-  id: string;
-  name: string;
-  displayName?: string | null;
-  description: string;
-  mesExample?: string | null;
-  depthPrompt?: {
-    depth: number;
-    prompt: string;
-  } | null;
-  character_book?: any;
-}
 
 interface Preset {
   name: string;
@@ -35,16 +12,6 @@ interface Preset {
   override_examples?: string | null;
   model: string;
   temperature: number;
-}
-
-interface AIRequestBody {
-  model: string;
-  messages: Array<{
-    role: "system" | "user" | "assistant";
-    content: string;
-  }>;
-  temperature: number;
-  character: string;
 }
 
 interface BuildPromptOptions {
@@ -59,23 +26,14 @@ export async function buildAIRequest({
   messages,
   userName = "User",
 }: BuildPromptOptions): Promise<AIRequestBody> {
-  const charName = character.name || character.displayName || "Character";
+  const charName = character.name || "Character";
   const charDescription = DEFAULT_PRESET.inject_description
     ? character.description
     : DEFAULT_PRESET.override_description || "";
 
-  const charExamples = DEFAULT_PRESET.inject_examples
+  const charExamples = DEFAULT_PRESET.inject_description
     ? character.mesExample || ""
     : DEFAULT_PRESET.override_examples || "";
-
-  // Build replacements object
-  const replacements: Record<string, string> = {
-    description: charDescription,
-    mesExamples: charExamples, // TODO: parse these properly, but it sort of works for now
-    // order matters. since the description and examples may contain {{user}} or {{char}}
-    user: userName || "User",
-    char: charName,
-  };
 
   const aiMessages: Array<{
     role: "system" | "user" | "assistant";
@@ -125,11 +83,25 @@ export async function buildAIRequest({
 
   const temperature = DEFAULT_PRESET.temperature > 1 ? DEFAULT_PRESET.temperature / 100 : DEFAULT_PRESET.temperature;
 
-  if (character.character_book) {
+  // Build lorebook editing instructions if enabled
+  const lorebookEditingInstructions = discordConfig.allowLoreboookEditing
+    ? `\n{Lorebook Editing}\nYou can update existing lorebook entries about people or things you learn. To update an entry, use: createOrEditLore("EntryName", "new content here"), dont add backticks or newlines, Just write it at the bottom of your response.\nYou can also add entries but please only update entries that you can see the value of. This command will be hidden from users and yourself.\nAvailable entries: ${character.character_book?.entries?.map((e: any) => e.name).join(", ") || "none"}\n`
+    : "";
+
+      if (character.character_book) {
     const book = await parseLorebook(character.character_book);
     const { list } = processLorebook(messages, book);
-    if (list.length > 0) aiMessages[0].content += "\n" + list.map((entry) => `${entry.content}`).join("\n ") + "\n";
+    if (list.length > 0) aiMessages[0].content += "\n" + list.map((entry) => `Lorebook entry "${entry?.name}"; content: ${entry.content}`).join("\n ") + "\n";
   }
+
+  // Build replacements object including lorebook
+  const replacements: Record<string, string> = {
+    description: charDescription,
+    mesExamples: charExamples,
+    lorebookEditing: lorebookEditingInstructions,
+    user: userName || "User",
+    char: charName,
+  };
 
   // replace all  {{user}} and {{char}} in the messages content
   aiMessages.forEach((msg) => {
@@ -142,7 +114,7 @@ export async function buildAIRequest({
     model: DEFAULT_PRESET.model,
     messages: aiMessages,
     temperature,
-    character: character.id,
+    character: charName,
   };
 }
 

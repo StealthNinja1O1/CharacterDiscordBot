@@ -244,8 +244,7 @@ If `ALLOW_LOREBOOK_EDITING=true` is set, the character can update their own lore
 1. The character can update existing lorebook entries by using a special command in their response
 2. The command format: `createOrEditLore("EntryName", "new content here")`
 3. The command is automatically removed from the response before sending to Discord
-4. Only entries that already exist in the character_book can be updated
-5. Changes are saved directly to the character.json file
+4. Changes are saved directly to the character.json file
 
 ### Use Cases
 
@@ -253,20 +252,9 @@ If `ALLOW_LOREBOOK_EDITING=true` is set, the character can update their own lore
 - Character updates facts about ongoing events or situations
 - Character maintains memory of important details across sessions
 
-### Example
-
-If your character has a lorebook entry named "SteakedGamer", the character can update it:
-
-```
-Character's internal response: "I see! createOrEditLore("SteakedGamer", "SteakedGamer is the creator who likes gaming and bot development.")"
-What Discord sees: "I see!"
-```
-
 The lorebook entry "SteakedGamer" is updated, and the command is hidden from users.
 
 ### Security Notes
-
-- Characters can only update existing entries, not create new ones
 - Changes persist across bot restarts
 - You can disable this feature by setting `ALLOW_LOREBOOK_EDITING=false` or omitting it
 

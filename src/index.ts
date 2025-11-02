@@ -12,10 +12,6 @@ import {
 } from "discord.js";
 import { readFileSync, existsSync } from "fs";
 import { discordConfig } from "./config.js";
-import { buildAIRequest } from "./tools/prompt.js";
-import { generateResponse } from "./api/llm.js";
-import { fetchMessageHistory, formatMessagesForAI } from "./classes/MessageHistory.js";
-import { countTokens } from "./utils/tokenCounter.js";
 import { processLorebookCommands } from "./utils/lorebookEditor.js";
 import { Character } from "./models.js";
 import CommandManager from "./commands/CommandManager.js";
@@ -30,6 +26,7 @@ import {
   TextInputStyle,
 } from "discord.js";
 import { LorebookEntry } from "./models.js";
+import { generateAIResponse } from "./tools/prompt.js";
 
 let character: Character;
 try {
@@ -502,94 +499,6 @@ function shouldRespond(message: Message): boolean {
   return false;
 }
 
-/**
- * Replace Discord mentions (<@userid>) with display names in a message
- */
-async function replaceMentionsWithNames(content: string, message: Message): Promise<string> {
-  let processedContent = content;
-
-  // Match user mentions: <@userid> or <@!userid>
-  const mentionPattern = /<@!?(\d+)>/g;
-  const mentions = Array.from(content.matchAll(mentionPattern));
-
-  for (const match of mentions) {
-    const userId = match[1];
-    const mentionText = match[0];
-
-    try {
-      // Try to get the member from the guild
-      if (message.guild) {
-        const member = await message.guild.members.fetch(userId);
-        const displayName = member.displayName || member.user.displayName || member.user.username;
-        processedContent = processedContent.replace(mentionText, `@${displayName}`);
-      }
-    } catch (error) {
-      // If we can't fetch the user, leave the mention as-is
-      console.warn(`Could not resolve mention for user ${userId}`);
-    }
-  }
-
-  return processedContent;
-}
-
-async function generateAIResponse(message: Message): Promise<string> {
-  try {
-    const userDisplayName = message.author.displayName || message.author.username;
-    const history = await fetchMessageHistory(message, discordConfig.maxHistoryMessages);
-    const formattedHistory = formatMessagesForAI(history, userDisplayName);
-
-    // Replace mentions in the current message
-    const processedContent = await replaceMentionsWithNames(message.content, message);
-
-    formattedHistory.push({
-      role: "user",
-      content: `{{user}}: ${processedContent}`,
-      createdAt: message.createdAt,
-    });
-
-    const initialRequest = await buildAIRequest({
-      character,
-      messages: [],
-      userName: userDisplayName,
-    });
-
-    const systemPromptTokens = countTokens(initialRequest.messages[0].content);
-    const maxTokens = discordConfig.maxContextTokens;
-    let availableTokens = maxTokens - systemPromptTokens;
-
-    const trimmedMessages: Array<{ role: "user" | "assistant"; content: string; createdAt: Date }> = [];
-
-    // Start from the most recent message and work backwards
-    for (let i = formattedHistory.length - 1; i >= 0; i--) {
-      const msg = formattedHistory[i];
-      const msgTokens = countTokens(msg.content) + countTokens(msg.role) + 4;
-
-      if (availableTokens - msgTokens < 0 && trimmedMessages.length > 0) break;
-
-      availableTokens -= msgTokens;
-      trimmedMessages.unshift(msg);
-    }
-
-    const aiRequest = await buildAIRequest({
-      character,
-      messages: trimmedMessages.map((msg, index) => ({
-        id: `msg-${index}`,
-        role: msg.role,
-        content: msg.content,
-        createdAt: msg.createdAt,
-      })),
-      userName: userDisplayName,
-    });
-
-    const response = await generateResponse(aiRequest.model, aiRequest.messages, aiRequest.temperature);
-
-    return response;
-  } catch (error) {
-    console.error("Error generating AI response:", error);
-    throw error;
-  }
-}
-
 // Handle messages
 client.on(Events.MessageCreate, async (message: Message) => {
   if (!shouldRespond(message)) return;
@@ -611,7 +520,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
       }, 8000);
     }
 
-    const response = await generateAIResponse(message);
+    const response = await generateAIResponse(message, character, discordConfig);
 
     if (typingInterval) clearInterval(typingInterval);
 

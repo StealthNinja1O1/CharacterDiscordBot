@@ -7,12 +7,6 @@ enum LorebookEntrySecondaryKeyLogic {
   AND_ALL = 3,
 }
 
-enum LorebookEntryPosition {
-  BEFORE_CHARACTER = 0,
-  AFTER_CHARACTER = 1,
-  IN_CONTEXT = 4,
-}
-
 /**
  * Check if a single key matches in the search text
  */

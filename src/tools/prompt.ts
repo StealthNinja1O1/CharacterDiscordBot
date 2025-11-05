@@ -3,7 +3,7 @@ import { Character, Message, AIRequestBody } from "../models.js";
 import { processLorebook } from "./lorebook.js";
 import { parseLorebook } from "./normalizeLorebook.js";
 import { generateResponse } from "../api/llm.js";
-import { fetchMessageHistory, formatMessagesForAI } from "../classes/MessageHistory.js";
+import { fetchMessageHistory, formatMessagesForAI } from "./MessageHistory.js";
 import { countTokens } from "../utils/tokenCounter.js";
 import { Message as DiscordMessage } from "discord.js";
 
@@ -154,7 +154,9 @@ export async function generateAIResponse(
 
     // Replace mentions in the current message
     const processedContent = await replaceMentionsWithNames(message.content, message);
-    const guildEmojis = message.guild?.emojis.cache || null;
+
+    // if anyone wants to add emoji replacement logic, this is the list of guild emojis
+    // const guildEmojis = message.guild?.emojis.cache || null;
 
     formattedHistory.push({
       role: "user",

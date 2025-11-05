@@ -54,7 +54,7 @@ export async function buildAIRequest({
     aiMessages.push({
       role: msg.role,
       content:
-        msg.content + (discordConfig.addTimestamps ? `\n[${msg?.createdAt?.toISOString() || "unknown time"}]` : ""),
+        msg.content + (discordConfig.addTimestamps && msg.role == "user" ? `\n[${msg?.createdAt?.toISOString() || "unknown time"}]` : ""),
     });
   });
 

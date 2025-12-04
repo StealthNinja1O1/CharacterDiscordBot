@@ -13,6 +13,7 @@ export interface DiscordConfig {
   minResponseIntervalSeconds: number;
   replyToMentions: boolean;
   mentionTriggerAllowedUserIds: string[];
+  addNothink: boolean;
 }
 
 export const discordConfig: DiscordConfig = {
@@ -30,6 +31,7 @@ export const discordConfig: DiscordConfig = {
   minResponseIntervalSeconds: parseInt(process.env.MIN_RESPONSE_INTERVAL_SECONDS || "0", 10),
   replyToMentions: process.env.REPLY_TO_MENTIONS === "true" || true,
   mentionTriggerAllowedUserIds: (process.env.MENTION_TRIGGER_ALLOWED_USERS || "").split(",").filter(Boolean),
+  addNothink: process.env.ADD_NOTHINK === "true" || false,
 };
 
 if (!discordConfig.botToken) throw new Error("DISCORD_BOT_TOKEN is not configured in .env file");

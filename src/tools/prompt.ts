@@ -54,7 +54,10 @@ export async function buildAIRequest({
     aiMessages.push({
       role: msg.role,
       content:
-        msg.content + (discordConfig.addTimestamps && msg.role == "user" ? `\n[${msg?.createdAt?.toISOString() || "unknown time"}]` : ""),
+        msg.content +
+        (discordConfig.addTimestamps && msg.role == "user"
+          ? `\n[${msg?.createdAt?.toISOString() || "unknown time"}]`
+          : ""),
     });
   });
 
@@ -153,7 +156,8 @@ export async function generateAIResponse(
     const formattedHistory = formatMessagesForAI(history, userDisplayName);
 
     // Replace mentions in the current message
-    const processedContent = await replaceMentionsWithNames(message.content, message);
+    let processedContent = await replaceMentionsWithNames(message);
+    if (config.addNothink) processedContent = `${processedContent} /nothink`;
 
     // if anyone wants to add emoji replacement logic, this is the list of guild emojis
     // const guildEmojis = message.guild?.emojis.cache || null;
@@ -187,7 +191,7 @@ export async function generateAIResponse(
       trimmedMessages.unshift(msg);
     }
 
-    const aiRequest = await buildAIRequest({
+    const { model, messages, temperature } = await buildAIRequest({
       character,
       messages: trimmedMessages.map((msg, index) => ({
         id: `msg-${index}`,
@@ -198,7 +202,7 @@ export async function generateAIResponse(
       userName: userDisplayName,
     });
 
-    const response = await generateResponse(aiRequest.model, aiRequest.messages, aiRequest.temperature);
+    const response = await generateResponse(model, messages, temperature);
 
     return response;
   } catch (error) {
@@ -207,16 +211,15 @@ export async function generateAIResponse(
   }
 }
 
-
 /**
  * Replace Discord mentions (<@userid>) with display names in a message
  */
-async function replaceMentionsWithNames(content: string, message: DiscordMessage): Promise<string> {
-  let processedContent = content;
+async function replaceMentionsWithNames(message: DiscordMessage): Promise<string> {
+  let processedContent = message.content;
 
   // Match user mentions: <@userid> or <@!userid>
   const mentionPattern = /<@!?(\d+)>/g;
-  const mentions = Array.from(content.matchAll(mentionPattern));
+  const mentions = Array.from(processedContent.matchAll(mentionPattern));
 
   for (const match of mentions) {
     const userId = match[1];

@@ -108,6 +108,6 @@ A member of the discord server named {{user}}, who is interacting with {{char}} 
   override_description: null,
   override_examples: null,
   model: process.env.LLM_MODEL || "gpt-5-mini",
-  temperature: 0.2,
+  temperature: parseFloat(process.env.LLM_TEMPERATURE || "0.7") || 0.7,
   is_default: true,
 } as const;

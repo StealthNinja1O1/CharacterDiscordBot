@@ -40,6 +40,7 @@ Configuration can be done via environment variables (.env file) or by editing `s
 LLM_API_KEY=
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=gpt-4o
+LLM_TEMPERATURE=0.7
 
 # Discord Bot Configuration
 DISCORD_BOT_TOKEN=
@@ -56,6 +57,7 @@ ADD_TIMESTAMPS=true # Add timestamps to messages
 MIN_RESPONSE_INTERVAL_SECONDS=0
 REPLY_TO_MENTIONS=true
 MENTION_TRIGGER_ALLOWED_USERS=1402920090344755323,1234567890
+ADD_NOTHINK=false
 
 # Lorebook
 ALLOW_LOREBOOK_EDITING=false
@@ -70,6 +72,7 @@ CHARACTER_FILE_PATH=./character.json
 - `LLM_API_KEY` - API key for your LLM provider
 - `LLM_BASE_URL` - Base URL for the API endpoint
 - `LLM_MODEL` - Model name to use
+- `LLM_TEMPERATURE` - Model temperature
 
 **Discord Settings:**
 - `DISCORD_BOT_TOKEN` - Your Discord bot token

@@ -1,6 +1,7 @@
 import {
   Interaction,
   ChatInputCommandInteraction,
+  MessageContextMenuCommandInteraction,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -13,10 +14,15 @@ import { DiscordBot } from "../classes/DiscordBot.js";
 import CommandManager from "./CommandManager.js";
 import { readFileSync, writeFileSync } from "fs";
 import { LorebookEntry } from "../models.js";
+import { buildAIRequest, trimMessagesToTokenBudget } from "../tools/prompt.js";
+import { processLorebookCommands } from "../utils/lorebookEditor.js";
+import { generateResponse } from "../api/llm.js";
+import { fetchMessageHistory, formatMessagesForAI } from "../tools/MessageHistory.js";
 
 export default class CommandHandler {
   private bot: DiscordBot;
   private commandManager: CommandManager;
+  private pendingAskCharMessages = new Map<string, import("discord.js").Message>();
 
   constructor(bot: DiscordBot) {
     this.bot = bot;
@@ -24,10 +30,16 @@ export default class CommandHandler {
   }
 
   async registerCommands(applicationId: string) {
-    await this.commandManager.registerCommands(applicationId);
+    await this.commandManager.registerCommands(applicationId, this.bot.getCharacter().name);
   }
 
   async handleInteraction(interaction: Interaction) {
+    // Handle message context menu (right-click → Ask Character)
+    if (interaction.isMessageContextMenuCommand()) {
+      await this.handleAskCharCommand(interaction as MessageContextMenuCommandInteraction);
+      return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     const cmd = interaction as ChatInputCommandInteraction;
@@ -77,10 +89,125 @@ export default class CommandHandler {
         await this.handleConfigureCommand(cmd);
         return;
       }
+
+      if (name === "ask") {
+        await this.handleAskCommand(cmd);
+        return;
+      }
     } catch (err) {
       console.error("Command error:", err);
       try {
         if (!cmd.replied) await cmd.reply({ content: "Command failed", ephemeral: true });
+      } catch (_) {}
+    }
+  }
+
+  private async handleAskCharCommand(interaction: MessageContextMenuCommandInteraction) {
+    const config = this.bot.getConfig();
+
+    // Permission check — same allowed users as other commands
+    if (!config.allowedUserIds.includes(interaction.user.id)) {
+      await interaction.reply({ content: "You don't have permission to use this command.", ephemeral: true });
+      return;
+    }
+
+    // Store the target message so we can retrieve it after modal submit
+    this.pendingAskCharMessages.set(interaction.id, interaction.targetMessage as any);
+
+    const modal = new ModalBuilder()
+      .setCustomId(`askchar_modal_${interaction.id}`)
+      .setTitle(`Ask ${this.bot.getCharacter().name}`);
+    const contextInput = new TextInputBuilder()
+      .setCustomId("manual_context")
+      .setLabel("Additional context (optional)")
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(false)
+      .setPlaceholder("Paste some recent messages or background info here (optional)");
+    modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(contextInput));
+
+    await interaction.showModal(modal);
+
+    const modalCustomId = `askchar_modal_${interaction.id}`;
+    const onModal = async (modalInt: any) => {
+      if (!modalInt.isModalSubmit?.() || modalInt.customId !== modalCustomId) return;
+      if (modalInt.user.id !== interaction.user.id) return;
+
+      clearTimeout(cleanupTimeout);
+      this.bot.getClient().removeListener("interactionCreate", onModal);
+
+      const targetMessage = this.pendingAskCharMessages.get(interaction.id);
+      this.pendingAskCharMessages.delete(interaction.id);
+      if (!targetMessage) {
+        await modalInt.reply({ content: "This request expired.", ephemeral: true });
+        return;
+      }
+
+      const manualContext = modalInt.fields.getTextInputValue("manual_context").trim();
+      await modalInt.deferReply();
+
+      try {
+        const userName = targetMessage.author.displayName || targetMessage.author.username;
+        const history = await fetchMessageHistory(targetMessage as any, config.maxHistoryMessages);
+        const formattedHistory = formatMessagesForAI(history, userName);
+        formattedHistory.push({ role: "user", content: `{{user}}: ${targetMessage.content}`, createdAt: targetMessage.createdAt });
+
+        const allMessages = formattedHistory.map((m, i) => ({ id: `h-${i}`, role: m.role, content: m.content, createdAt: m.createdAt }));
+        if (manualContext) {
+          allMessages.unshift({ id: "ctx-0", role: "user" as const, content: `[Context]: ${manualContext}`, createdAt: new Date() });
+        }
+
+        const trimmed = await trimMessagesToTokenBudget(allMessages, this.bot.getCharacter(), userName, config.maxContextTokens);
+        const { model, messages, temperature } = await buildAIRequest({ character: this.bot.getCharacter(), messages: trimmed, userName });
+        const raw = await generateResponse(model, messages, temperature, config.addNothink);
+        const { cleanedResponse, edited, updatedCharacter } = processLorebookCommands(raw, this.bot.getCharacter());
+        if (edited) this.bot.setCharacter(updatedCharacter);
+
+        const reply = cleanedResponse?.trim() || "*...*";
+        const chunks = reply.match(/[\s\S]{1,2000}/g) || [reply];
+        await modalInt.editReply(chunks[0]);
+        for (let i = 1; i < chunks.length; i++) await modalInt.followUp(chunks[i]);
+      } catch (err) {
+        console.error("AskChar modal error:", err);
+        try { await modalInt.editReply("*Something went wrong... The static consumes my words.*"); } catch (_) {}
+      }
+    };
+
+    this.bot.getClient().on("interactionCreate", onModal);
+
+    // Clean up if the modal is never submitted
+    const cleanupTimeout = setTimeout(() => {
+      this.pendingAskCharMessages.delete(interaction.id);
+      this.bot.getClient().removeListener("interactionCreate", onModal);
+    }, 5 * 60 * 1000);
+  }
+
+  private async handleAskCommand(cmd: ChatInputCommandInteraction) {
+    const config = this.bot.getConfig();
+    const prompt = cmd.options.getString("prompt", true);
+    const userName = cmd.user.displayName || cmd.user.username;
+
+    await cmd.deferReply();
+
+    try {
+      const { model, messages, temperature } = await buildAIRequest({
+        character: this.bot.getCharacter(),
+        messages: [{ id: "ask-0", role: "user", content: `{{user}}: ${prompt}`, createdAt: new Date() }],
+        userName,
+      });
+
+      const raw = await generateResponse(model, messages, temperature, config.addNothink);
+      const { cleanedResponse, edited, updatedCharacter } = processLorebookCommands(raw, this.bot.getCharacter());
+
+      if (edited) this.bot.setCharacter(updatedCharacter);
+
+      const reply = cleanedResponse?.trim() || "*...*";
+      const chunks = reply.match(/[\s\S]{1,2000}/g) || [reply];
+      await cmd.editReply(chunks[0]);
+      for (let i = 1; i < chunks.length; i++) await cmd.followUp(chunks[i]);
+    } catch (err) {
+      console.error("Ask command error:", err);
+      try {
+        await cmd.editReply("*Something went wrong... The static consumes my words.*");
       } catch (_) {}
     }
   }

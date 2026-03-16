@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
 import { REST } from "discord.js";
-import { Routes, SlashCommandBuilder } from "discord.js";
+import { Routes, SlashCommandBuilder, ContextMenuCommandBuilder, ApplicationCommandType } from "discord.js";
 import { discordConfig } from "../config.js";
 
 export type CommandEventPayload =
@@ -8,7 +8,9 @@ export type CommandEventPayload =
   | { type: "togglementions" }
   | { type: "togglebot" }
   | { type: "update"; fileUrl: string; filename: string }
-  | { type: "lorebook" };
+  | { type: "lorebook" }
+  | { type: "askchar" }
+  | { type: "ask" };
 
 export class CommandManager extends EventEmitter {
   rest: REST;
@@ -18,7 +20,24 @@ export class CommandManager extends EventEmitter {
     this.rest = new REST({ version: "10" }).setToken(discordConfig.botToken);
   }
 
-  async registerCommands(applicationId: string) {
+  async registerCommands(applicationId: string, characterName = "Character") {
+    const contextMenuCmd = new ContextMenuCommandBuilder()
+      .setName(`Ask ${characterName}`.slice(0, 32))
+      .setType(ApplicationCommandType.Message)
+      .toJSON();
+    // Enable both guild-install and user-install so the command works in any server
+    (contextMenuCmd as any).integration_types = [0, 1];
+    (contextMenuCmd as any).contexts = [0, 1, 2];
+
+    // /ask slash command — also user-installable
+    const askCmd = new SlashCommandBuilder()
+      .setName("ask")
+      .setDescription(`Send a prompt directly to ${characterName}`)
+      .addStringOption((o) => o.setName("prompt").setDescription("Your message").setRequired(true))
+      .toJSON();
+    (askCmd as any).integration_types = [0, 1];
+    (askCmd as any).contexts = [0, 1, 2];
+
     const commands = [
       new SlashCommandBuilder().setName("togglerandom").setDescription("Toggle random responses"),
       new SlashCommandBuilder().setName("togglementions").setDescription("Toggle replies to mentions"),
@@ -59,7 +78,7 @@ export class CommandManager extends EventEmitter {
     ].map((c) => c.toJSON());
 
     try {
-      await this.rest.put(Routes.applicationCommands(applicationId), { body: commands });
+      await this.rest.put(Routes.applicationCommands(applicationId), { body: [...commands, contextMenuCmd, askCmd] });
       console.log("Commands registered");
     } catch (err) {
       console.error("Failed to register commands:", err);

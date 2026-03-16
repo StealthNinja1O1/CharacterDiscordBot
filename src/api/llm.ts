@@ -11,6 +11,7 @@ interface ChatCompletionRequest {
   model: string;
   messages: ChatMessage[];
   temperature: number;
+  thinking?: { type: string };
 }
 
 interface ChatCompletionResponse {
@@ -28,15 +29,15 @@ interface ChatCompletionResponse {
   };
 }
 
-export async function generateResponse(model: string, messages: ChatMessage[], temperature: number): Promise<string> {
+export async function generateResponse(model: string, messages: ChatMessage[], temperature: number, noThink = false): Promise<string> {
   if (!LLM_API_KEY) throw new Error("LLM API key (LLM_API_KEY) is not configured in .env file");
   if (!LLM_BASE_URL) throw new Error("LLM base URL (LLM_BASE_URL) is not configured in .env file");
-  
 
   const requestBody: ChatCompletionRequest = {
     model,
     messages,
     temperature,
+    ...(noThink && { thinking: { type: "disabled" } }),
   };
 
   try {

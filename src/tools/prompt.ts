@@ -145,6 +145,30 @@ function replacePlaceholders(template: string, replacements: Record<string, stri
   return result;
 }
 
+/**
+ * Trims a messages array to fit within the token budget after accounting for the system prompt.
+ */
+export async function trimMessagesToTokenBudget(
+  messages: Message[],
+  character: Character,
+  userName: string,
+  maxContextTokens: number
+): Promise<Message[]> {
+  const initialRequest = await buildAIRequest({ character, messages: [], userName });
+  const systemPromptTokens = countTokens(initialRequest.messages[0].content);
+  let availableTokens = maxContextTokens - systemPromptTokens;
+
+  const trimmed: Message[] = [];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    const msgTokens = countTokens(msg.content) + countTokens(msg.role) + 4;
+    if (availableTokens - msgTokens < 0 && trimmed.length > 0) break;
+    availableTokens -= msgTokens;
+    trimmed.unshift(msg);
+  }
+  return trimmed;
+}
+
 export async function generateAIResponse(
   message: DiscordMessage,
   character: Character,
@@ -157,7 +181,6 @@ export async function generateAIResponse(
 
     // Replace mentions in the current message
     let processedContent = await replaceMentionsWithNames(message);
-    if (config.addNothink) processedContent = `${processedContent} /nothink`;
 
     // if anyone wants to add emoji replacement logic, this is the list of guild emojis
     // const guildEmojis = message.guild?.emojis.cache || null;
@@ -168,41 +191,22 @@ export async function generateAIResponse(
       createdAt: message.createdAt,
     });
 
-    const initialRequest = await buildAIRequest({
-      character,
-      messages: [],
-      userName: userDisplayName,
-    });
+    const allMessages: Message[] = formattedHistory.map((msg, index) => ({
+      id: `msg-${index}`,
+      role: msg.role,
+      content: msg.content,
+      createdAt: msg.createdAt,
+    }));
 
-    const systemPromptTokens = countTokens(initialRequest.messages[0].content);
-    const maxTokens = config.maxContextTokens;
-    let availableTokens = maxTokens - systemPromptTokens;
-
-    const trimmedMessages: Array<{ role: "user" | "assistant"; content: string; createdAt: Date }> = [];
-
-    // Start from the most recent message and work backwards
-    for (let i = formattedHistory.length - 1; i >= 0; i--) {
-      const msg = formattedHistory[i];
-      const msgTokens = countTokens(msg.content) + countTokens(msg.role) + 4;
-
-      if (availableTokens - msgTokens < 0 && trimmedMessages.length > 0) break;
-
-      availableTokens -= msgTokens;
-      trimmedMessages.unshift(msg);
-    }
+    const trimmedMessages = await trimMessagesToTokenBudget(allMessages, character, userDisplayName, config.maxContextTokens);
 
     const { model, messages, temperature } = await buildAIRequest({
       character,
-      messages: trimmedMessages.map((msg, index) => ({
-        id: `msg-${index}`,
-        role: msg.role,
-        content: msg.content,
-        createdAt: msg.createdAt,
-      })),
+      messages: trimmedMessages,
       userName: userDisplayName,
     });
 
-    const response = await generateResponse(model, messages, temperature);
+    const response = await generateResponse(model, messages, temperature, config.addNothink);
 
     return response;
   } catch (error) {

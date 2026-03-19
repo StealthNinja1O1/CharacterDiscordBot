@@ -5,7 +5,7 @@ import { parseLorebook } from "./normalizeLorebook.js";
 import { generateResponse } from "../api/llm.js";
 import { fetchMessageHistory, formatMessagesForAI } from "./MessageHistory.js";
 import { countTokens } from "../utils/tokenCounter.js";
-import { Collection, Message as DiscordMessage, GuildEmoji } from "discord.js";
+import { Collection, Message as DiscordMessage, GuildEmoji, ActivityType } from "discord.js";
 
 interface Preset {
   name: string;
@@ -232,6 +232,7 @@ export async function generateAIResponse(
 
     // Replace mentions in the current message
     let processedContent = await replaceMentionsWithNames(message);
+    const userPresence = await fetchUserPresence(message);
 
     const guildEmojis = message.guild?.emojis.cache || null;
     const guildName = message.guild?.name || "the server";
@@ -245,7 +246,7 @@ export async function generateAIResponse(
 
     formattedHistory.push({
       role: "user",
-      content: `${userDisplayName} (${username} - ${userId}): ${processedContent}`,
+      content: `${userDisplayName} (${username} - ${userId}): ${processedContent}\n${userPresence}`,
       createdAt: message.createdAt,
     });
 
@@ -308,4 +309,65 @@ async function replaceMentionsWithNames(message: DiscordMessage): Promise<string
   }
 
   return processedContent;
+}
+
+/**
+ * Fetches user's Discord presence (status and activities) for context
+ */
+async function fetchUserPresence(message: DiscordMessage): Promise<string> {
+  if (!message.guild) {
+    console.warn("Message is not in a guild, cannot fetch presence");
+    return "";
+  }
+
+  try {
+    const member = message.member;
+    if (!member) return "";
+
+    const status = member.presence?.status;
+    const statusText = status ? `[${status.toUpperCase()}]` : "";
+    const activities = member.presence?.activities;
+    let activityText = "";
+
+    if (activities && activities.length > 0) {
+      const activityParts: string[] = [];
+
+      for (const activity of activities) {
+        const type = activity.type;
+        const name = activity.name;
+        const details = activity.details;
+        const state = activity.state;
+
+        switch (type) {
+          case ActivityType.Playing:
+            activityParts.push(`Playing ${name}${details ? ` (${details})` : ""}${state ? ` - ${state}` : ""}`);
+            break;
+          case ActivityType.Streaming:
+            activityParts.push(`Streaming ${name}${details ? ` (${details})` : ""}`);
+            break;
+          case ActivityType.Listening:
+            activityParts.push(`Listening to ${name}${details ? ` (${details})` : ""}`);
+            break;
+          case ActivityType.Watching:
+            activityParts.push(`Watching ${name}${details ? ` (${details})` : ""}`);
+            break;
+          case ActivityType.Competing:
+            activityParts.push(`Competing in ${name}${details ? ` (${details})` : ""}`);
+            break;
+          default:
+            if (name) activityParts.push(name);
+        }
+      }
+
+      if (activityParts.length > 0) {
+        activityText = ` - ${activityParts.join(" | ")}`;
+      }
+    }
+
+    return statusText || activityText ? ` ${statusText}${activityText}` : "";
+  } catch (error) {
+    // If we can't fetch presence, continue without it
+    console.warn(`Could not fetch presence for user ${message.author.id}:`, error);
+    return "";
+  }
 }

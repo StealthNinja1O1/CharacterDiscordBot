@@ -143,7 +143,7 @@ Just set the `LLM_BASE_URL` to the provider's endpoint.
 
 1. Create application at https://discord.com/developers/applications
 2. Go to Bot section, create bot, copy token
-3. Enable "Message Content Intent" under Privileged Gateway Intents
+3. Enable "Message Content Intent" and "Presence Intent" under Privileged Gateway Intents
 4. Go to OAuth2 > URL Generator
    - Scopes: `bot`, `applications.commands`
    - Permissions: Send Messages, Read Message History

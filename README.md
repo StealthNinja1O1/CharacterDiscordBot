@@ -146,6 +146,7 @@ Just set the `LLM_BASE_URL` to the provider's endpoint.
 4. Go to OAuth2 > URL Generator
    - Scopes: `bot`, `applications.commands`
    - Permissions: Send Messages, Read Message History
+   - Optional Permissions for commands: Add reactions, Manage Nicknames, Change Nickname,
 5. Use generated URL to invite bot to your server
 6. Enable Developer Mode in Discord (Settings > Advanced)
 7. Right-click channel, Copy ID for `DISCORD_CHANNEL_ID`

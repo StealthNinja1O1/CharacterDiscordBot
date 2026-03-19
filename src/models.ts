@@ -90,3 +90,16 @@ export interface AIRequestBody {
   temperature: number;
   character: string;
 }
+
+// Bot-facing command types (from AI)
+export type BotCommand =
+  | { name: "react"; args: { emoji: string } }
+  | { name: "renameSelf"; args: { newName: string } }
+  | { name: "renameUser"; args: { userId: string; newName: string } }
+  | { name: "editOrAddToLorebook"; args: { entryName: string; keywords: string[]; content: string } }
+  | { name: string; args: Record<string, any> }; // fallback for unknown commands
+
+export interface AIResponse {
+  reply: string;
+  commands?: BotCommand[];
+}

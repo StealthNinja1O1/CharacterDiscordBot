@@ -1,7 +1,8 @@
 const LLM_API_KEY = process.env.LLM_API_KEY;
 const LLM_BASE_URL = process.env.LLM_BASE_URL;
+if (!LLM_API_KEY) throw new Error("LLM API key (LLM_API_KEY) is not configured in .env file");
+if (!LLM_BASE_URL) throw new Error("LLM base URL (LLM_BASE_URL) is not configured in .env file");
 
-// OpenAI-compatible API types
 interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -29,10 +30,12 @@ interface ChatCompletionResponse {
   };
 }
 
-export async function generateResponse(model: string, messages: ChatMessage[], temperature: number, noThink = false): Promise<string> {
-  if (!LLM_API_KEY) throw new Error("LLM API key (LLM_API_KEY) is not configured in .env file");
-  if (!LLM_BASE_URL) throw new Error("LLM base URL (LLM_BASE_URL) is not configured in .env file");
-
+export async function generateResponse(
+  model: string,
+  messages: ChatMessage[],
+  temperature: number,
+  noThink = false,
+): Promise<string> {
   const requestBody: ChatCompletionRequest = {
     model,
     messages,

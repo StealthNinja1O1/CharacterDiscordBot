@@ -1,11 +1,11 @@
-import { Message } from "discord.js";
+import { Message, User } from "discord.js";
 
 export interface HistoryMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   createdAt: Date;
-  username?: string; // Discord name of the message author
+  member?: User | null; 
 }
 
 /**
@@ -62,7 +62,7 @@ export async function fetchMessageHistory(message: Message, limit: number): Prom
         role: msg.author.bot ? "assistant" : "user",
         content: processedContent,
         createdAt: msg.createdAt,
-        username: msg.member?.displayName || msg.author.displayName || msg.author.username,
+        member: msg.author,
       });
     }
   } catch (error) {
@@ -77,15 +77,14 @@ export async function fetchMessageHistory(message: Message, limit: number): Prom
  */
 export function formatMessagesForAI(
   messages: HistoryMessage[],
-  currentUserName: string
 ): Array<{ role: "user" | "assistant"; content: string; createdAt: Date }> {
   return messages.map((msg) => {
     let content = msg.content;
+    const username = msg.member?.username || "unknown";
+    const userDisplayName = msg.member?.displayName || username || "unknown";
+    const userId = msg.member?.id || "unknown";
 
-    if (msg.role === "user" && msg.username) {
-      if (msg.username === currentUserName) content = `{{user}}: ${content}`;
-      else content = `${msg.username}: ${content}`;
-    }
+    if (msg.role === "user") content = `${userDisplayName} (${username} - ${userId}): ${content}`;
 
     return {
       role: msg.role,

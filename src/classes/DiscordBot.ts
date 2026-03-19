@@ -3,6 +3,7 @@ import { DiscordConfig, DEFAULT_PRESET } from "../config.js";
 import { Character } from "../models.js";
 import { readFileSync, existsSync } from "fs";
 import { processLorebookCommands } from "../utils/lorebookEditor.js";
+import { executeBotCommands } from "../utils/botCommandHandler.js";
 import { generateAIResponse } from "../tools/prompt.js";
 import CommandHandler from "../commands/CommandHandler.js";
 
@@ -27,6 +28,7 @@ export class DiscordBot {
   private messageCounter = 0;
   private isBusy = new Map<string, boolean>();
   private lastResponseTimestamp = new Map<string, number>();
+  private botDiscordId: string | null = null;
 
   constructor(options: DiscordBotOptions) {
     this.discordConfig = options.discordConfig;
@@ -80,6 +82,7 @@ export class DiscordBot {
   private setupEventHandlers() {
     this.client.once(Events.ClientReady, async () => {
       console.log(`Logged in as ${this.client.user?.tag}`);
+      this.botDiscordId = this.client.user?.id || null;
       console.log(`Character: ${this.character.name}`);
       console.log(`Monitoring channel: ${this.discordConfig.channelId || "all channels"}`);
       console.log(`Random response rate: 1 in ${this.discordConfig.randomResponseRate}`);
@@ -164,22 +167,40 @@ export class DiscordBot {
         }, 8000);
       }
 
-      const response = await generateAIResponse(message, this.character, this.discordConfig);
+      const response = await generateAIResponse(message, this.character, this.discordConfig, this.botDiscordId);
+      console.log("Raw AI response:", response);
+      let reply = "I was stupid and typed something that isn't valid JSON. Oops.";
 
-      if (typingInterval) clearInterval(typingInterval);
+      // filter starting ``` or ```json and trailing ``` if they are present. Any codeblocks later on in the response should be left intact, as they might be intentional for formatting reasons
+      const startsWithCodeBlock = response.trim().startsWith("```");
+      const endsWithCodeBlock = response.trim().endsWith("```");
+      let cleanedResponse = response.trim();
+      if (startsWithCodeBlock) cleanedResponse = cleanedResponse.replace(/^```(json)?/, "");
+      if (endsWithCodeBlock)
+        // reverse the string and remove the first ``` from the end
+        cleanedResponse = cleanedResponse.split("").reverse().join("").replace(/^```/, "").split("").reverse().join("");
 
-      // Process any lorebook editing commands
-      const { cleanedResponse, edited, updatedCharacter } = processLorebookCommands(response, this.character);
-
-      if (edited) {
-        console.log("Lorebook was updated by the character.");
-        this.character = updatedCharacter;
-        await this.onCharacterUpdate(updatedCharacter);
+      try {
+        const json = JSON.parse(cleanedResponse);
+        reply = json.reply;
+        if (json.commands && Array.isArray(json.commands)) {
+          const commandResults = await executeBotCommands(json.commands, {
+            message,
+            character: this.character,
+            characterFilePath: this.discordConfig.characterFilePath,
+          });
+          for (const result of commandResults) {
+            console.log(`Bot command result: ${result.message}`);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to parse AI response as JSON. Response was:", response);
       }
 
-      if (cleanedResponse && cleanedResponse.trim()) {
+      if (typingInterval) clearInterval(typingInterval);
+      if (reply && reply.trim()) {
         // Split long messages if needed (Discord has a 2000 character limit)
-        const chunks = cleanedResponse.match(/[\s\S]{1,2000}/g) || [];
+        const chunks = reply.match(/[\s\S]{1,2000}/g) || [];
         for (const chunk of chunks) await message.reply(chunk);
       }
     } catch (error) {

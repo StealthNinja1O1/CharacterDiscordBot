@@ -5,7 +5,7 @@ import { parseLorebook } from "./normalizeLorebook.js";
 import { generateResponse } from "../api/llm.js";
 import { fetchMessageHistory, formatMessagesForAI } from "./MessageHistory.js";
 import { countTokens } from "../utils/tokenCounter.js";
-import { Message as DiscordMessage } from "discord.js";
+import { Collection, Message as DiscordMessage, GuildEmoji } from "discord.js";
 
 interface Preset {
   name: string;
@@ -18,17 +18,26 @@ interface Preset {
   temperature: number;
 }
 
+interface GuildInfo {
+  guildName: string;
+  channelName: string;
+  guildEmojis: Collection<string, GuildEmoji> | null;
+  botId?: string | null;
+}
+
 interface BuildPromptOptions {
   character: Character;
   messages: Message[];
   preset?: Preset | null;
   userName?: string;
+  guildInfo?: GuildInfo;
 }
 
 export async function buildAIRequest({
   character,
   messages,
   userName = "User",
+  guildInfo,
 }: BuildPromptOptions): Promise<AIRequestBody> {
   const charName = character.name || "Character";
   const charDescription = DEFAULT_PRESET.inject_description
@@ -51,13 +60,15 @@ export async function buildAIRequest({
 
   // Add conversation history
   messages.forEach((msg) => {
+    let finaltext = msg.content;
+    if (!msg.content || msg.content.trim() === "") return; // Skip empty messages
+    if (msg.role == "user" && discordConfig.addTimestamps)
+      finaltext += `\n[${msg?.createdAt?.toISOString() || "unknown time"}]`;
+    // ensure assistant messages are valid json, so it keeps using this format.
+    if (msg.role == "assistant") finaltext = JSON.stringify({ reply: finaltext, commands: [] });
     aiMessages.push({
       role: msg.role,
-      content:
-        msg.content +
-        (discordConfig.addTimestamps && msg.role == "user"
-          ? `\n[${msg?.createdAt?.toISOString() || "unknown time"}]`
-          : ""),
+      content: finaltext,
     });
   });
 
@@ -91,28 +102,44 @@ export async function buildAIRequest({
 
   const temperature = DEFAULT_PRESET.temperature > 1 ? DEFAULT_PRESET.temperature / 100 : DEFAULT_PRESET.temperature;
 
-  // Build lorebook editing instructions if enabled
-  const lorebookEditingInstructions = discordConfig.allowLorebookEditing
-    ? `\n{Lorebook Editing}\nYou can update existing lorebook entries about people or things you learn. Do this CONSISTENTLY when you learn something new about a user. To update an entry, use: createOrEditLore("EntryName", "new content here"), dont add backticks or newlines.\nYou can also add entries but please only update entries that you can see the value of. This command will be hidden from users and yourself.\nAvailable entries: ${
-        character.character_book?.entries?.map((e: any) => e.name).join(", ") || "none"
-      }\n`
-    : "";
+  let lorebookEntries = "Lorebook entries:\n";
 
   if (character.character_book) {
     const book = await parseLorebook(character.character_book);
+
+    // create a list of all entries with name and keyword for the lorebook editing context
+    if (discordConfig.allowLorebookEditing) {
+      if (!book.entries || book.entries.length === 0) lorebookEntries += "No entries in the lorebook yet.\n";
+      else
+        for (const entry of book.entries)
+          lorebookEntries += `Entry name: ${entry.name || "Unnamed entry"}; Keywords: ${
+            entry.keys?.join(", ") || "No keywords"
+          };\n`;
+    }
+
     const { list } = processLorebook(messages, book);
     if (list.length > 0)
       aiMessages[0].content +=
         "\n" + list.map((entry) => `Lorebook entry "${entry?.name}"; content: ${entry.content}`).join("\n ") + "\n";
+    else if (!book.entries || book.entries.length === 0)
+      aiMessages[0].content += "\nNo relevant lorebook entries triggered.";
+  }
+
+  if (guildInfo?.guildEmojis) {
+    const emojisList = guildInfo.guildEmojis.map((e) => `<:${e.name}:${e.id}>`).join(", ");
+    aiMessages[0].content += `\nThe server has the following emojis: ${emojisList}`;
   }
 
   // Build replacements object including lorebook
   const replacements: Record<string, string> = {
     description: charDescription,
     mesExamples: charExamples,
-    lorebookEditing: lorebookEditingInstructions,
+    lorebookEntries: lorebookEntries,
     user: userName || "User",
     char: charName,
+    serverName: guildInfo?.guildName || "the server",
+    channelName: guildInfo?.channelName || "a channel",
+    discordId: guildInfo?.botId || "unknown",
   };
 
   // replace all  {{user}} and {{char}} in the messages content
@@ -120,7 +147,8 @@ export async function buildAIRequest({
     msg.content = replacePlaceholders(msg.content, replacements);
   });
 
-  // console.log(aiMessages[0].content.slice(-5000));
+  // console.log(aiMessages[0].content.slice(-7000));
+  // console.log(aiMessages);;
 
   return {
     model: DEFAULT_PRESET.model,
@@ -152,7 +180,7 @@ export async function trimMessagesToTokenBudget(
   messages: Message[],
   character: Character,
   userName: string,
-  maxContextTokens: number
+  maxContextTokens: number,
 ): Promise<Message[]> {
   const initialRequest = await buildAIRequest({ character, messages: [], userName });
   const systemPromptTokens = countTokens(initialRequest.messages[0].content);
@@ -172,22 +200,32 @@ export async function trimMessagesToTokenBudget(
 export async function generateAIResponse(
   message: DiscordMessage,
   character: Character,
-  config: DiscordConfig
+  config: DiscordConfig,
+  botId?: string | null,
 ): Promise<string> {
   try {
     const userDisplayName = message.author.displayName || message.author.username;
+    const username = message.author.username;
+    const userId = message.author.id;
     const history = await fetchMessageHistory(message, config.maxHistoryMessages);
-    const formattedHistory = formatMessagesForAI(history, userDisplayName);
+    const formattedHistory = formatMessagesForAI(history);
 
     // Replace mentions in the current message
     let processedContent = await replaceMentionsWithNames(message);
 
-    // if anyone wants to add emoji replacement logic, this is the list of guild emojis
-    // const guildEmojis = message.guild?.emojis.cache || null;
+    const guildEmojis = message.guild?.emojis.cache || null;
+    const guildName = message.guild?.name || "the server";
+    const channelName: string = (message.channel as any)?.name || "a channel";
+    const guildInfo = {
+      guildName,
+      channelName,
+      guildEmojis,
+      botId,
+    };
 
     formattedHistory.push({
       role: "user",
-      content: `{{user}}: ${processedContent}`,
+      content: `${userDisplayName} (${username} - ${userId}): ${processedContent}`,
       createdAt: message.createdAt,
     });
 
@@ -198,12 +236,18 @@ export async function generateAIResponse(
       createdAt: msg.createdAt,
     }));
 
-    const trimmedMessages = await trimMessagesToTokenBudget(allMessages, character, userDisplayName, config.maxContextTokens);
+    const trimmedMessages = await trimMessagesToTokenBudget(
+      allMessages,
+      character,
+      userDisplayName,
+      config.maxContextTokens,
+    );
 
     const { model, messages, temperature } = await buildAIRequest({
       character,
       messages: trimmedMessages,
       userName: userDisplayName,
+      guildInfo,
     });
 
     const response = await generateResponse(model, messages, temperature, config.addNothink);

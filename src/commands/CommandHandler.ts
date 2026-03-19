@@ -16,8 +16,8 @@ import CommandManager from "./CommandManager.js";
 import { readFileSync, writeFileSync } from "fs";
 import { LorebookEntry } from "../models.js";
 import { buildAIRequest, trimMessagesToTokenBudget } from "../tools/prompt.js";
-import { processLorebookCommands } from "../utils/lorebookEditor.js";
 import { executeBotCommands } from "../utils/botCommandHandler.js";
+import { parseAIResponse } from "../utils/responseParser.js";
 import { generateResponse } from "../api/llm.js";
 import { fetchMessageHistory, formatMessagesForAI } from "../tools/MessageHistory.js";
 
@@ -165,45 +165,22 @@ export default class CommandHandler {
         const { model, messages, temperature } = await buildAIRequest({ character: this.bot.getCharacter(), messages: trimmed, userName });
         const raw = await generateResponse(model, messages, temperature, config.addNothink);
 
-        let reply = raw;
-        let cleanedRaw = raw;
         let characterUpdated = false;
+        const parsed = parseAIResponse(raw);
 
-        // Try to parse as JSON for new command format
-        try {
-          const startsWithCodeBlock = raw.trim().startsWith("```");
-          const endsWithCodeBlock = raw.trim().endsWith("```");
-          let cleanedResponse = raw.trim();
-          if (startsWithCodeBlock) cleanedResponse = cleanedResponse.replace(/^```(json)?/, "");
-          if (endsWithCodeBlock)
-            cleanedResponse = cleanedResponse.split("").reverse().join("").replace(/^```/, "").split("").reverse().join("");
-
-          const json = JSON.parse(cleanedResponse);
-          reply = json.reply;
-          if (json.commands && Array.isArray(json.commands)) {
-            const commandResults = await executeBotCommands(json.commands, {
-              message: targetMessage as any,
-              character: this.bot.getCharacter(),
-              characterFilePath: config.characterFilePath,
-            });
-            for (const result of commandResults) {
-              console.log(`Bot command result: ${result.message}`);
-            }
+        // Execute bot commands if present
+        if (parsed.commands && parsed.commands.length > 0) {
+          const commandResults = await executeBotCommands(parsed.commands, {
+            message: targetMessage as any,
+            character: this.bot.getCharacter(),
+            characterFilePath: config.characterFilePath,
+          });
+          for (const result of commandResults) {
+            console.log(`Bot command result: ${result.message}`);
           }
-        } catch {
-          // Not JSON, use raw response
-          cleanedRaw = raw;
-          reply = raw;
         }
 
-        // Fall back to old lorebook command format if not JSON
-        const { cleanedResponse, edited, updatedCharacter } = processLorebookCommands(cleanedRaw, this.bot.getCharacter());
-        if (edited) {
-          this.bot.setCharacter(updatedCharacter);
-          characterUpdated = true;
-        }
-
-        const finalReply = cleanedResponse?.trim() || reply?.trim() || "*...*";
+        const finalReply = parsed.reply?.trim() || parsed.reply?.trim() || "*...*";
         const chunks = finalReply.match(/[\s\S]{1,2000}/g) || [finalReply];
         await modalInt.editReply(chunks[0]);
         for (let i = 1; i < chunks.length; i++) await modalInt.followUp(chunks[i]);
@@ -239,36 +216,14 @@ export default class CommandHandler {
       });
 
       const raw = await generateResponse(model, messages, temperature, config.addNothink);
-      let reply = raw;
-      let cleanedRaw = raw;
+      const parsed = parseAIResponse(raw);
 
-      // Try to parse as JSON for new command format
-      try {
-        const startsWithCodeBlock = raw.trim().startsWith("```");
-        const endsWithCodeBlock = raw.trim().endsWith("```");
-        let cleanedResponse = raw.trim();
-        if (startsWithCodeBlock) cleanedResponse = cleanedResponse.replace(/^```(json)?/, "");
-        if (endsWithCodeBlock)
-          cleanedResponse = cleanedResponse.split("").reverse().join("").replace(/^```/, "").split("").reverse().join("");
-
-        const json = JSON.parse(cleanedResponse);
-        reply = json.reply;
-        if (json.commands && Array.isArray(json.commands)) {
-          // Can't execute bot commands here as we don't have a message context
-          console.log("Ask command cannot execute bot commands (no message context):", json.commands);
-        }
-      } catch {
-        // Not JSON, use raw response
-        cleanedRaw = raw;
-        reply = raw;
+      // Can't execute bot commands here as we don't have a message context
+      if (parsed.commands && parsed.commands.length > 0) {
+        console.log("Ask command cannot execute bot commands (no message context):", parsed.commands);
       }
 
-      // Fall back to old lorebook command format if not JSON
-      const { cleanedResponse, edited, updatedCharacter } = processLorebookCommands(cleanedRaw, this.bot.getCharacter());
-
-      if (edited) this.bot.setCharacter(updatedCharacter);
-
-      const finalReply = cleanedResponse?.trim() || reply?.trim() || "*...*";
+      const finalReply = parsed.reply?.trim() || parsed.reply?.trim() || "*...*";
       const chunks = finalReply.match(/[\s\S]{1,2000}/g) || [finalReply];
       await cmd.editReply(chunks[0]);
       for (let i = 1; i < chunks.length; i++) await cmd.followUp(chunks[i]);

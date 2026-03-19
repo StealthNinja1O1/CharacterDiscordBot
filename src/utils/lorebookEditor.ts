@@ -60,7 +60,6 @@ export function processLorebookCommands(
       if (entryIndex !== -1) {
         // Update existing entry
         characterCard.data.character_book.entries[entryIndex].content = newContent;
-        console.log(`Updated lorebook entry: ${entryName}, new content: ${newContent}`);
         edited = true;
       } else {
         // Create new entry
@@ -83,7 +82,6 @@ export function processLorebookCommands(
           secondary_keys: [],
         };
         characterCard.data.character_book.entries.push(newEntry);
-        console.log(`Created new lorebook entry: ${entryName}`);
         edited = true;
       }
     }
@@ -91,7 +89,6 @@ export function processLorebookCommands(
     if (edited) {
       // Save updated character file
       writeFileSync(discordConfig.characterFilePath, JSON.stringify(characterCard, null, 3), "utf-8");
-      console.log("Character file updated with lorebook changes.");
 
       // Update in-memory character
       character.character_book = characterCard.data.character_book;

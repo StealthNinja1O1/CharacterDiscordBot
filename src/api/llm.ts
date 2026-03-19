@@ -3,9 +3,12 @@ const LLM_BASE_URL = process.env.LLM_BASE_URL;
 if (!LLM_API_KEY) throw new Error("LLM API key (LLM_API_KEY) is not configured in .env file");
 if (!LLM_BASE_URL) throw new Error("LLM base URL (LLM_BASE_URL) is not configured in .env file");
 
+import { ImageAttachment } from "../models.js";
+import { discordConfig } from "../config.js";
+
 interface ChatMessage {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | Array<{ type: "text" | "image_url"; text?: string; image_url?: { url: string } }>;
 }
 
 interface ChatCompletionRequest {
@@ -35,10 +38,55 @@ export async function generateResponse(
   messages: ChatMessage[],
   temperature: number,
   noThink = false,
+  images: ImageAttachment[] = [],
 ): Promise<string> {
+  // Build multimodal messages if vision is enabled and images are present
+  let finalMessages = messages;
+
+  if (discordConfig.enableVision && images.length > 0) {
+    finalMessages = messages.map((msg) => {
+      // Only modify user messages; keep system and assistant as-is
+      if (msg.role !== "user") {
+        return msg;
+      }
+
+      // Check if this is the last user message (the one that triggered the bot)
+      const isLastUserMessage =
+        messages.filter((m) => m.role === "user").length > 0 &&
+        msg === messages.filter((m) => m.role === "user").pop();
+
+      // Only add images to the last user message
+      if (!isLastUserMessage) {
+        return msg;
+      }
+
+      // Build multimodal content array
+      const content: Array<{ type: "text" | "image_url"; text?: string; image_url?: { url: string } }> = [];
+
+      // Add text content
+      const textContent = typeof msg.content === "string" ? msg.content : msg.content.find((c) => c.type === "text")?.text || "";
+      if (textContent) {
+        content.push({ type: "text", text: textContent });
+      }
+
+      // Add images
+      for (const image of images) {
+        // Truncate base64 in logs to avoid exposing sensitive content
+        const shortBase64 = image.base64.length > 100 ? image.base64.substring(0, 100) + "..." : image.base64;
+        console.log(`Adding vision image: ${image.contentType}, data: ${shortBase64}`);
+        content.push({ type: "image_url", image_url: { url: image.base64 } });
+      }
+
+      return {
+        role: msg.role,
+        content: content,
+      };
+    });
+  }
+
   const requestBody: ChatCompletionRequest = {
     model,
-    messages,
+    messages: finalMessages,
     temperature,
     ...(noThink && { thinking: { type: "disabled" } }),
   };

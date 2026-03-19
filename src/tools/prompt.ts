@@ -1,5 +1,5 @@
 import { DEFAULT_PRESET, DiscordConfig, discordConfig } from "../config.js";
-import { Character, Message, AIRequestBody } from "../models.js";
+import { Character, Message, AIRequestBody, ImageAttachment } from "../models.js";
 import { processLorebook } from "./lorebook.js";
 import { parseLorebook } from "./normalizeLorebook.js";
 import { generateResponse } from "../api/llm.js";
@@ -31,6 +31,7 @@ interface BuildPromptOptions {
   preset?: Preset | null;
   userName?: string;
   guildInfo?: GuildInfo;
+  replyContext?: string | null;
 }
 
 export async function buildAIRequest({
@@ -38,6 +39,7 @@ export async function buildAIRequest({
   messages,
   userName = "User",
   guildInfo,
+  replyContext,
 }: BuildPromptOptions): Promise<AIRequestBody> {
   const charName = character.name || "Character";
   const charDescription = DEFAULT_PRESET.inject_description
@@ -58,10 +60,26 @@ export async function buildAIRequest({
     },
   ];
 
+  // Add reply context if present (prepend to last user message)
+  let lastUserMessageIndex = -1;
+  if (replyContext) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") {
+        lastUserMessageIndex = i;
+        break;
+      }
+    }
+  }
+
   // Add conversation history
-  messages.forEach((msg) => {
+  messages.forEach((msg, index) => {
     let finaltext = msg.content;
     if (!msg.content || msg.content.trim() === "") return; // Skip empty messages
+
+    // Prepend reply context to the last user message
+    if (index === lastUserMessageIndex && replyContext) {
+      finaltext = `${replyContext}\n\n${finaltext}`;
+    }
     if (msg.role == "user" && discordConfig.addTimestamps)
       finaltext += `\n[${msg?.createdAt?.toISOString() || "unknown time"}]`;
     // ensure assistant messages are valid json, so it keeps using this format.
@@ -202,6 +220,8 @@ export async function generateAIResponse(
   character: Character,
   config: DiscordConfig,
   botId?: string | null,
+  replyContext?: string | null,
+  images: ImageAttachment[] = [],
 ): Promise<string> {
   try {
     const userDisplayName = message.author.displayName || message.author.username;
@@ -248,9 +268,10 @@ export async function generateAIResponse(
       messages: trimmedMessages,
       userName: userDisplayName,
       guildInfo,
+      replyContext,
     });
 
-    const response = await generateResponse(model, messages, temperature, config.addNothink);
+    const response = await generateResponse(model, messages, temperature, config.addNothink, images);
 
     return response;
   } catch (error) {

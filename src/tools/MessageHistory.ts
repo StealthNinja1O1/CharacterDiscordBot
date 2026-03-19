@@ -1,11 +1,25 @@
 import { Message, User } from "discord.js";
+import { ImageAttachment } from "../models.js";
 
 export interface HistoryMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   createdAt: Date;
-  member?: User | null; 
+  member?: User | null;
+}
+
+export interface ReferencedMessageInfo {
+  text: string;
+  images: ImageAttachment[];
+}
+
+export interface HistoryMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: Date;
+  member?: User | null;
 }
 
 /**
@@ -92,4 +106,94 @@ export function formatMessagesForAI(
       createdAt: msg.createdAt,
     };
   });
+}
+
+/**
+ * Downloads an image from a URL and converts it to base64
+ */
+async function downloadAndEncodeImage(url: string, contentType: string): Promise<string | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.warn(`Failed to download image from ${url}: ${response.statusText}`);
+      return null;
+    }
+
+    const buffer = await response.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString("base64");
+    return `data:${contentType};base64,${base64}`;
+  } catch (error) {
+    console.error(`Error encoding image from ${url}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Checks if a Discord attachment is an image
+ */
+function isImageAttachment(attachment: any): boolean {
+  const contentType = attachment.contentType || "";
+  return contentType.startsWith("image/");
+}
+
+/**
+ * Extracts image attachments from a Discord message and encodes them to base64
+ */
+export async function extractImagesFromMessage(message: Message): Promise<ImageAttachment[]> {
+  const images: ImageAttachment[] = [];
+
+  for (const attachment of Array.from(message.attachments.values())) {
+    if (isImageAttachment(attachment)) {
+      const url = attachment.url;
+      const contentType = attachment.contentType;
+
+      if (url && contentType) {
+        const base64 = await downloadAndEncodeImage(url, contentType);
+        if (base64) {
+          images.push({
+            url: url,
+            contentType: contentType,
+            base64: base64,
+          });
+        }
+      }
+    }
+  }
+
+  return images;
+}
+
+/**
+ * Fetches the message that the current message is replying to, if any
+ * Returns formatted reply context text and any images from the referenced message
+ */
+export async function fetchReferencedMessage(message: Message): Promise<ReferencedMessageInfo | null> {
+  if (!message.reference || !message.reference.messageId) {
+    return null;
+  }
+
+  try {
+    // Fetch the referenced message
+    const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
+    if (!referencedMessage) {
+      return null;
+    }
+
+    // Get author display name
+    const displayName = referencedMessage.member?.displayName || referencedMessage.author.displayName || referencedMessage.author.username;
+
+    // Format the reply context
+    const text = `{{user}} is replying to ${referencedMessage.content} (by @${displayName})`;
+
+    // Extract any images from the referenced message
+    const images = await extractImagesFromMessage(referencedMessage);
+
+    return {
+      text,
+      images,
+    };
+  } catch (error) {
+    console.error("Error fetching referenced message:", error);
+    return null;
+  }
 }

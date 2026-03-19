@@ -71,6 +71,12 @@ export interface CharacterCardV2 {
   };
 }
 
+export interface ImageAttachment {
+  url: string;
+  contentType: string;
+  base64: string;
+}
+
 export interface Message {
   id: string;
   chatId?: string;
@@ -79,6 +85,7 @@ export interface Message {
   createdAt?: Date;
   parentId?: string | null;
   variantIndex?: number;
+  attachments?: ImageAttachment[];
 }
 
 export interface AIRequestBody {

@@ -89,6 +89,7 @@ CHARACTER_FILE_PATH=./character.json
 - `REPLY_TO_MENTIONS` - If `false`, the bot will not reply when directly mentioned, only by allowed people
 - `MENTION_TRIGGER_ALLOWED_USERS` - Comma-separated list of user IDs allowed to trigger mention/trigger keyword replies even if REPLY_TO_MENTIONS is set to false.
 - `ADD_NOTHINK` - If `true` the text `/nothink` will be added to the last user prompt to disable thinking. Works for GLM at least.
+- `ENABLE_VISION` - If `true` it will pass images in the message that triggered the bot, or where you reply to, to the LLM. Make sure your model supports it.
 
 **Lorebook:**
 - `ALLOW_LOREBOOK_EDITING` - Allow the character to update their own lorebook entries (true/false)

@@ -27,7 +27,6 @@ export async function executeBotCommands(
     try {
       const result = await executeCommand(cmd, message, character, characterFilePath);
       results.push(result);
-      console.log(`Command ${cmd.name}: ${result.message}`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       results.push({ success: false, message: `Error executing ${cmd.name}: ${errorMsg}` });
@@ -251,7 +250,6 @@ async function executeEditLorebook(
       if (keywords.length > 0) {
         book.entries[entryIndex].keys = keywords;
       }
-      console.log(`Updated lorebook entry "${entryName}"`);
     } else {
       // Create new entry
       const newEntry: LorebookEntry = {
@@ -273,7 +271,6 @@ async function executeEditLorebook(
         secondary_keys: [],
       };
       book.entries.push(newEntry);
-      console.log(`Created new lorebook entry "${entryName}"`);
     }
 
     // Save to file

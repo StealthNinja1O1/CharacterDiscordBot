@@ -2,9 +2,10 @@ import { Client, GatewayIntentBits, Events, Message } from "discord.js";
 import { DiscordConfig, DEFAULT_PRESET } from "../config.js";
 import { Character } from "../models.js";
 import { readFileSync, existsSync } from "fs";
-import { processLorebookCommands } from "../utils/lorebookEditor.js";
 import { executeBotCommands } from "../utils/botCommandHandler.js";
+import { parseAIResponse } from "../utils/responseParser.js";
 import { generateAIResponse } from "../tools/prompt.js";
+import { fetchReferencedMessage, extractImagesFromMessage } from "../tools/MessageHistory.js";
 import CommandHandler from "../commands/CommandHandler.js";
 
 export interface DiscordBotOptions {
@@ -167,34 +168,36 @@ export class DiscordBot {
         }, 8000);
       }
 
-      const response = await generateAIResponse(message, this.character, this.discordConfig, this.botDiscordId);
+      // Fetch reply context and images
+      const referencedMsgInfo = await fetchReferencedMessage(message);
+      const replyContext = referencedMsgInfo?.text || null;
+
+      // Extract images from current message and combine with referenced message images
+      const currentImages = await extractImagesFromMessage(message);
+      const allImages = [...currentImages, ...(referencedMsgInfo?.images || [])];
+
+      const response = await generateAIResponse(
+        message,
+        this.character,
+        this.discordConfig,
+        this.botDiscordId,
+        replyContext,
+        allImages
+      );
       console.log("Raw AI response:", response);
-      let reply = "I was stupid and typed something that isn't valid JSON. Oops.";
+      const parsed = parseAIResponse(response);
+      let reply = parsed.reply;
 
-      // filter starting ``` or ```json and trailing ``` if they are present. Any codeblocks later on in the response should be left intact, as they might be intentional for formatting reasons
-      const startsWithCodeBlock = response.trim().startsWith("```");
-      const endsWithCodeBlock = response.trim().endsWith("```");
-      let cleanedResponse = response.trim();
-      if (startsWithCodeBlock) cleanedResponse = cleanedResponse.replace(/^```(json)?/, "");
-      if (endsWithCodeBlock)
-        // reverse the string and remove the first ``` from the end
-        cleanedResponse = cleanedResponse.split("").reverse().join("").replace(/^```/, "").split("").reverse().join("");
-
-      try {
-        const json = JSON.parse(cleanedResponse);
-        reply = json.reply;
-        if (json.commands && Array.isArray(json.commands)) {
-          const commandResults = await executeBotCommands(json.commands, {
-            message,
-            character: this.character,
-            characterFilePath: this.discordConfig.characterFilePath,
-          });
-          for (const result of commandResults) {
-            console.log(`Bot command result: ${result.message}`);
-          }
+      // Execute bot commands if present
+      if (parsed.commands && parsed.commands.length > 0) {
+        const commandResults = await executeBotCommands(parsed.commands, {
+          message,
+          character: this.character,
+          characterFilePath: this.discordConfig.characterFilePath,
+        });
+        for (const result of commandResults) {
+          console.log(`Bot command result: ${result.message}`);
         }
-      } catch (error) {
-        console.error("Failed to parse AI response as JSON. Response was:", response);
       }
 
       if (typingInterval) clearInterval(typingInterval);

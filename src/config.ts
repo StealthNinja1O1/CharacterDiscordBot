@@ -15,6 +15,9 @@ export interface DiscordConfig {
   mentionTriggerAllowedUserIds: string[];
   addNothink: boolean;
   enableVision: boolean;
+  allowRenaming: boolean;
+  enableUserStatus: boolean;
+  timeoutSeconds: number;
 }
 
 export const discordConfig: DiscordConfig = {
@@ -34,6 +37,9 @@ export const discordConfig: DiscordConfig = {
   mentionTriggerAllowedUserIds: (process.env.MENTION_TRIGGER_ALLOWED_USERS || "").split(",").filter(Boolean),
   addNothink: process.env.ADD_NOTHINK === "true" || false,
   enableVision: process.env.ENABLE_VISION === "true" || false,
+  allowRenaming: process.env.ALLOW_RENAMING === "true" || false,
+  enableUserStatus: process.env.ENABLE_USER_STATUS === "true" || false,
+  timeoutSeconds: parseInt(process.env.TIMEOUT_SECONDS || "0", 10),
 };
 
 if (!discordConfig.botToken) throw new Error("DISCORD_BOT_TOKEN is not configured in .env file");
@@ -52,13 +58,13 @@ export const availableCommands = [
     name: "renameSelf",
     args: { newName: "string" },
     description: "Change {{char}}'s nickname in the server to the specified newName.",
-    enabled: true,
+    enabled: discordConfig.allowRenaming,
   },
   {
     name: "renameUser",
     args: { userId: "string", newName: "string" },
     description: "Change the nickname of the specified user in the server to newName.",
-    enabled: true, // use with caution, can be disruptive
+    enabled: discordConfig.allowRenaming,
   },
   {
     name: "editOrAddToLorebook",

@@ -58,6 +58,9 @@ MIN_RESPONSE_INTERVAL_SECONDS=0
 REPLY_TO_MENTIONS=true
 MENTION_TRIGGER_ALLOWED_USERS=1402920090344755323,1234567890
 ADD_NOTHINK=false
+ENABLE_USER_STATUS=true
+ENABLE_VISION=true
+ALLOW_RENAMING=false
 
 # Lorebook
 ALLOW_LOREBOOK_EDITING=false
@@ -85,11 +88,13 @@ CHARACTER_FILE_PATH=./character.json
 - `MAX_CONTEXT_TOKENS` - Maximum tokens for context (includes system prompt)
 - `IGNORE_OTHER_BOTS` - Whether to ignore messages from other bots
 - `TRIGGER_KEYWORDS` - Additional keywords that trigger responses (comma-separated)
-- `MIN_RESPONSE_INTERVAL_SECONDS` - Minimum time in seconds to wait before replying again in the same channel (default: 0)
+- `MIN_RESPONSE_INTERVAL_SECONDS` - Minimum time in seconds to wait before replying again in the same channel (default: 0), bypassed by `MENTION_TRIGGER_ALLOWED_USERS`
 - `REPLY_TO_MENTIONS` - If `false`, the bot will not reply when directly mentioned, only by allowed people
 - `MENTION_TRIGGER_ALLOWED_USERS` - Comma-separated list of user IDs allowed to trigger mention/trigger keyword replies even if REPLY_TO_MENTIONS is set to false.
 - `ADD_NOTHINK` - If `true` the text `/nothink` will be added to the last user prompt to disable thinking. Works for GLM at least.
 - `ENABLE_VISION` - If `true` it will pass images in the message that triggered the bot, or where you reply to, to the LLM. Make sure your model supports it.
+- `ENABLE_USER_STATUS` - If `true` everyones status will be added to the context. Disabling will also remove the need for "Presence Intent"
+- `ALLOW_RENAMING` - If `true` the bot can rename itself and members if the permissions are set.
 
 **Lorebook:**
 - `ALLOW_LOREBOOK_EDITING` - Allow the character to update their own lorebook entries (true/false)

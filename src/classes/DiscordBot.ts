@@ -43,14 +43,13 @@ export class DiscordBot {
       this.character = options.characterSource;
     }
 
+    // Optional intent for user status if enabled in config
+    const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent];
+    if (this.discordConfig.enableUserStatus) intents.push(GatewayIntentBits.GuildPresences);
+
     // Create Discord client
     this.client = new Client({
-      intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildPresences,
-      ],
+      intents,
     });
 
     // Create command handler
@@ -110,13 +109,13 @@ export class DiscordBot {
     if (this.isBusy.get(channelid)) return false;
     if (!this.runtimeEnabled) return false;
 
-    const canUserMention =
-      this.discordConfig.replyToMentions || this.discordConfig.mentionTriggerAllowedUserIds.includes(message.author.id);
+    const whiteListedUser = this.discordConfig.mentionTriggerAllowedUserIds.includes(message.author.id);
+    const canUserMention = this.discordConfig.replyToMentions || whiteListedUser;
 
     // Enforce minimum interval between responses in the same channel
     const lastTs = this.lastResponseTimestamp.get(channelid) || 0;
     const now = Date.now();
-    if (now - lastTs < this.discordConfig.minResponseIntervalSeconds * 1000) return false;
+    if (now - lastTs < this.discordConfig.minResponseIntervalSeconds * 1000 && !whiteListedUser) return false;
 
     // Don't respond to self
     if (message.author.id === this.client.user?.id) return false;
@@ -187,7 +186,7 @@ export class DiscordBot {
         this.discordConfig,
         this.botDiscordId,
         replyContext,
-        allImages
+        allImages,
       );
       console.log("Raw AI response:", response);
       const parsed = parseAIResponse(response);

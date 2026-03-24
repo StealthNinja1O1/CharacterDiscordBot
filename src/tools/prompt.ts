@@ -232,7 +232,8 @@ export async function generateAIResponse(
 
     // Replace mentions in the current message
     let processedContent = await replaceMentionsWithNames(message);
-    const userPresence = await fetchUserPresence(message);
+    let userPresence = "";
+    if (config.enableUserStatus) userPresence = await fetchUserPresence(message);
 
     const guildEmojis = message.guild?.emojis.cache || null;
     const guildName = message.guild?.name || "the server";
@@ -246,7 +247,7 @@ export async function generateAIResponse(
 
     formattedHistory.push({
       role: "user",
-      content: `${userDisplayName} (${username} - ${userId}): ${processedContent}\n${userPresence}`,
+      content: `${userDisplayName} (${username} - ${userId}): ${processedContent}\n${userPresence ? `[User presence:${userPresence}]` : ""}`,
       createdAt: message.createdAt,
     });
 

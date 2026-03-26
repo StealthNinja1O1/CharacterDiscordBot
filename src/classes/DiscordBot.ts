@@ -124,7 +124,9 @@ export class DiscordBot {
     if (message.author.bot && this.discordConfig.ignoreOtherBots) return false;
 
     // Only respond in the configured channel
-    if (message.channelId !== this.discordConfig.channelId && this.discordConfig.channelId) return false;
+    if (this.discordConfig.channelId.length > 0 && !this.discordConfig.channelId.includes(message.channelId)) {
+      return false;
+    }
 
     // Only check for any type of mention/keyword triggers if allowed
     if (canUserMention) {

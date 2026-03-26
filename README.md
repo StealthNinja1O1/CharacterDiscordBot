@@ -79,7 +79,7 @@ CHARACTER_FILE_PATH=./character.json
 
 **Discord Settings:**
 - `DISCORD_BOT_TOKEN` - Your Discord bot token
-- `DISCORD_CHANNEL_ID` - Channel ID where the bot responds (leave empty for all channels)
+- `DISCORD_CHANNEL_ID` - Channel ID where the bot responds (leave empty for all channels, comma seperated for multiple)
 - `DISCORD_ALLOWED_USERS` - User IDs allowed to use admin commands
 
 **Behavior:**

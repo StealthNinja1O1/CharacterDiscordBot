@@ -1,6 +1,6 @@
 export interface DiscordConfig {
   botToken: string;
-  channelId: string;
+  channelId: string[];
   allowedUserIds: string[];
   randomResponseRate: number;
   maxHistoryMessages: number;
@@ -22,7 +22,7 @@ export interface DiscordConfig {
 
 export const discordConfig: DiscordConfig = {
   botToken: process.env.DISCORD_BOT_TOKEN || "",
-  channelId: process.env.DISCORD_CHANNEL_ID || "",
+  channelId: (process.env.DISCORD_CHANNEL_ID || "").split(",").filter(Boolean),
   allowedUserIds: (process.env.DISCORD_ALLOWED_USERS || "").split(",").filter(Boolean),
   randomResponseRate: parseInt(process.env.RANDOM_RESPONSE_RATE || "50", 10),
   maxHistoryMessages: parseInt(process.env.MAX_HISTORY_MESSAGES || "20", 10),

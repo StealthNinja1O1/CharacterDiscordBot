@@ -66,6 +66,8 @@ export function parseAIResponse(rawResponse: string): ParsedAIResponse {
 
       if (replyMatch && replyMatch[1]) {
         reply = replyMatch[1];
+        reply = reply.replace(/\\n/g, "\n").replace(/\\"/g, '"');
+
         success = true;
       }
       if (commandsMatch)

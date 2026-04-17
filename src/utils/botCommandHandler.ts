@@ -18,7 +18,7 @@ export async function executeBotCommands(
     message: Message;
     character: Character;
     characterFilePath?: string;
-  }
+  },
 ): Promise<CommandResult[]> {
   const results: CommandResult[] = [];
   const { message, character, characterFilePath } = context;
@@ -41,7 +41,7 @@ async function executeCommand(
   cmd: BotCommand,
   message: Message,
   character: Character,
-  characterFilePath?: string
+  characterFilePath?: string,
 ): Promise<CommandResult> {
   switch (cmd.name) {
     case "react":
@@ -65,10 +65,7 @@ async function executeCommand(
  * React to the message that triggered the bot's response
  * @param args.emoji - Discord emoji (e.g., "😀" or "emojiName:emojiId" for custom emojis)
  */
-async function executeReact(
-  args: { emoji: string },
-  message: Message
-): Promise<CommandResult> {
+async function executeReact(args: { emoji: string }, message: Message): Promise<CommandResult> {
   const { emoji } = args;
 
   if (!emoji || typeof emoji !== "string") {
@@ -108,22 +105,18 @@ async function executeReact(
 async function executeRenameSelf(
   args: { newName: string },
   message: Message,
-  character: Character
+  character: Character,
 ): Promise<CommandResult> {
+  if (!discordConfig.allowRenaming) return { success: false, message: "Renaming is disabled" };
+
   const { newName } = args;
 
-  if (!newName || typeof newName !== "string") {
-    return { success: false, message: "Invalid newName argument" };
-  }
+  if (!newName || typeof newName !== "string") return { success: false, message: "Invalid newName argument" };
 
-  if (!message.guild) {
-    return { success: false, message: "Cannot rename outside of a server" };
-  }
+  if (!message.guild) return { success: false, message: "Cannot rename outside of a server" };
 
   const botMember = message.guild.members.me;
-  if (!botMember) {
-    return { success: false, message: "Bot is not a member of this server" };
-  }
+  if (!botMember) return { success: false, message: "Bot is not a member of this server" };
 
   try {
     await botMember.setNickname(newName);
@@ -141,24 +134,13 @@ async function executeRenameSelf(
  * @param args.userId - Discord user ID or @mention
  * @param args.newName - New nickname for the user
  */
-async function executeRenameUser(
-  args: { userId: string; newName: string },
-  message: Message
-): Promise<CommandResult> {
+async function executeRenameUser(args: { userId: string; newName: string }, message: Message): Promise<CommandResult> {
+  if (!discordConfig.allowRenaming) return { success: false, message: "Renaming is disabled" };
+
   const { userId, newName } = args;
-
-  if (!userId || typeof userId !== "string") {
-    return { success: false, message: "Invalid userId argument" };
-  }
-  if (!newName || typeof newName !== "string") {
-    return { success: false, message: "Invalid newName argument" };
-  }
-
-  if (!message.guild) {
-    return { success: false, message: "Cannot rename outside of a server" };
-  }
-
-  // Extract user ID from mention if provided
+  if (!userId || typeof userId !== "string") return { success: false, message: "Invalid userId argument" };
+  if (!newName || typeof newName !== "string") return { success: false, message: "Invalid newName argument" };
+  if (!message.guild) return { success: false, message: "Cannot rename outside of a server" };
   const extractedUserId = userId.match(/^<@!?(\d+)>$/)?.[1] || userId;
 
   try {
@@ -167,15 +149,12 @@ async function executeRenameUser(
       return { success: false, message: `User ${userId} not found in server` };
     }
 
-    // Check if bot has permission to manage nicknames
-    if (!message.guild.members.me?.permissions.has("ManageNicknames")) {
+    if (!message.guild.members.me?.permissions.has("ManageNicknames"))
       return { success: false, message: "Bot lacks MANAGE_NICKNAMES permission" };
-    }
 
     // Cannot rename users with higher role
-    if (targetMember.roles.highest.position >= message.guild.members.me.roles.highest.position) {
+    if (targetMember.roles.highest.position >= message.guild.members.me.roles.highest.position)
       return { success: false, message: "Cannot rename users with equal or higher role" };
-    }
 
     await targetMember.setNickname(newName);
     return { success: true, message: `Renamed user ${targetMember.user.username} to "${newName}"` };
@@ -196,7 +175,7 @@ async function executeRenameUser(
 async function executeEditLorebook(
   args: { entryName: string; keywords: string[]; content: string },
   character: Character,
-  characterFilePath?: string
+  characterFilePath?: string,
 ): Promise<CommandResult> {
   const { entryName, keywords, content } = args;
 
@@ -241,7 +220,7 @@ async function executeEditLorebook(
 
     // Find existing entry (case-insensitive)
     const entryIndex = book.entries.findIndex(
-      (entry: LorebookEntry) => entry.name.toLowerCase() === entryName.toLowerCase()
+      (entry: LorebookEntry) => entry.name.toLowerCase() === entryName.toLowerCase(),
     );
 
     if (entryIndex !== -1) {

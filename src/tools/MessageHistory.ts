@@ -55,7 +55,7 @@ async function replaceMentionsWithNames(content: string, message: Message): Prom
 /**
  * Fetches message history from a Discord channel
  */
-export async function fetchMessageHistory(message: Message, limit: number): Promise<HistoryMessage[]> {
+export async function fetchMessageHistory(message: Message, limit: number, botId: string | null): Promise<HistoryMessage[]> {
   const messages: HistoryMessage[] = [];
 
   try {
@@ -70,10 +70,11 @@ export async function fetchMessageHistory(message: Message, limit: number): Prom
       if (msg.author.bot && msg.content.trim() === "") continue;
 
       const processedContent = await replaceMentionsWithNames(msg.content, msg);
+      const isBotMessage = msg.author.bot && (botId && msg.author.id === botId);
 
       messages.push({
         id: msg.id,
-        role: msg.author.bot ? "assistant" : "user",
+        role: isBotMessage ? "assistant" : "user",
         content: processedContent,
         createdAt: msg.createdAt,
         member: msg.author,

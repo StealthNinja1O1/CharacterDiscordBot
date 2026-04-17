@@ -227,7 +227,7 @@ export async function generateAIResponse(
     const userDisplayName = message.author.displayName || message.author.username;
     const username = message.author.username;
     const userId = message.author.id;
-    const history = await fetchMessageHistory(message, config.maxHistoryMessages);
+    const history = await fetchMessageHistory(message, config.maxHistoryMessages, botId);
     const formattedHistory = formatMessagesForAI(history);
 
     // Replace mentions in the current message

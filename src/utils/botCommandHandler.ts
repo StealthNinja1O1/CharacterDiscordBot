@@ -56,6 +56,9 @@ async function executeCommand(
     case "editOrAddToLorebook":
       return await executeEditLorebook(cmd.args as any, character, characterFilePath);
 
+    case "postSticker":
+      return await executePostSticker(cmd.args as any, message);
+
     default:
       return { success: false, message: `Unknown command: ${cmd.name}` };
   }
@@ -263,6 +266,49 @@ async function executeEditLorebook(
     return {
       success: false,
       message: `Failed to edit lorebook: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * Send a sticker from the server
+ * @param args.stickerName - Name of the sticker to send
+ */
+async function executePostSticker(
+  args: { stickerName: string },
+  message: Message,
+): Promise<CommandResult> {
+  const { stickerName } = args;
+
+  if (!stickerName || typeof stickerName !== "string") {
+    return { success: false, message: "Invalid stickerName argument" };
+  }
+
+  if (!message.guild) {
+    return { success: false, message: "Cannot send stickers outside of a server" };
+  }
+
+  if (!message.channel.isTextBased()) {
+    return { success: false, message: "Cannot send stickers in this channel type" };
+  }
+
+  try {
+    // Fetch server stickers and find by name (case-insensitive)
+    const stickers = await message.guild.stickers.fetch();
+    const sticker = stickers.find((s) => s.name.toLowerCase() === stickerName.toLowerCase());
+
+    if (!sticker) {
+      return { success: false, message: `Sticker "${stickerName}" not found in this server` };
+    }
+
+    // Cast needed: TypeScript doesn't narrow PartialGroupDMChannel out of the union
+    const channel = message.channel as import("discord.js").TextChannel;
+    await channel.send({ stickers: [sticker] });
+    return { success: true, message: `Sent sticker "${sticker.name}"` };
+  } catch (error) {
+    return {
+      success: false,
+      message: `Failed to send sticker: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }

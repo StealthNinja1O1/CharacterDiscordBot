@@ -77,6 +77,12 @@ export interface ImageAttachment {
   base64: string;
 }
 
+export interface ReactionInfo {
+  emoji: string;
+  userIds: string[];
+  userNames: string[];
+}
+
 export interface Message {
   id: string;
   chatId?: string;
@@ -86,6 +92,7 @@ export interface Message {
   parentId?: string | null;
   variantIndex?: number;
   attachments?: ImageAttachment[];
+  reactions?: ReactionInfo[];
 }
 
 export interface AIRequestBody {
@@ -104,6 +111,7 @@ export type BotCommand =
   | { name: "renameSelf"; args: { newName: string } }
   | { name: "renameUser"; args: { userId: string; newName: string } }
   | { name: "editOrAddToLorebook"; args: { entryName: string; keywords: string[]; content: string } }
+  | { name: "postSticker"; args: { stickerName: string } }
   | { name: string; args: Record<string, any> }; // fallback for unknown commands
 
 export interface AIResponse {

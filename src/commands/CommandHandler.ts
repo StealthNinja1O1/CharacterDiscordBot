@@ -152,7 +152,7 @@ export default class CommandHandler {
         const displayName = targetMessage.author.displayName || targetMessage.author.username;
         const userId = targetMessage.author.id;
 
-        const history = await fetchMessageHistory(targetMessage as any, config.maxHistoryMessages);
+        const history = await fetchMessageHistory(targetMessage as any, config.maxHistoryMessages, this.bot.botDiscordId || null);
         const formattedHistory = formatMessagesForAI(history);
         formattedHistory.push({ role: "user", content: `${displayName} (${userName} - ${userId}): ${targetMessage.content}`, createdAt: targetMessage.createdAt });
 

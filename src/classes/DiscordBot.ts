@@ -5,7 +5,7 @@ import { readFileSync, existsSync } from "fs";
 import { executeBotCommands } from "../utils/botCommandHandler.js";
 import { parseAIResponse } from "../utils/responseParser.js";
 import { generateAIResponse } from "../tools/prompt.js";
-import { fetchReferencedMessage, extractImagesFromMessage } from "../tools/MessageHistory.js";
+import { fetchReferencedMessage, extractImagesFromMessage, extractStickerImagesFromMessage } from "../tools/MessageHistory.js";
 import CommandHandler from "../commands/CommandHandler.js";
 
 export interface DiscordBotOptions {
@@ -29,7 +29,7 @@ export class DiscordBot {
   private messageCounter = 0;
   private isBusy = new Map<string, boolean>();
   private lastResponseTimestamp = new Map<string, number>();
-  private botDiscordId: string | null = null;
+  public botDiscordId: string | null = null;
 
   constructor(options: DiscordBotOptions) {
     this.discordConfig = options.discordConfig;
@@ -180,7 +180,8 @@ export class DiscordBot {
 
       // Extract images from current message and combine with referenced message images
       const currentImages = await extractImagesFromMessage(message);
-      const allImages = [...currentImages, ...(referencedMsgInfo?.images || [])];
+      const stickerImages = await extractStickerImagesFromMessage(message);
+      const allImages = [...currentImages, ...stickerImages, ...(referencedMsgInfo?.images || [])];
 
       const response = await generateAIResponse(
         message,

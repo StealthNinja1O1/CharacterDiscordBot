@@ -5,7 +5,7 @@ import { parseLorebook } from "./normalizeLorebook.js";
 import { generateResponse } from "../api/llm.js";
 import { fetchMessageHistory, formatMessagesForAI } from "./MessageHistory.js";
 import { countTokens } from "../utils/tokenCounter.js";
-import { Collection, Message as DiscordMessage, GuildEmoji, ActivityType } from "discord.js";
+import { Collection, Message as DiscordMessage, GuildEmoji, Sticker, ActivityType } from "discord.js";
 
 interface Preset {
   name: string;
@@ -22,6 +22,7 @@ interface GuildInfo {
   guildName: string;
   channelName: string;
   guildEmojis: Collection<string, GuildEmoji> | null;
+  guildStickers: Collection<string, Sticker> | null;
   botId?: string | null;
 }
 
@@ -83,7 +84,30 @@ export async function buildAIRequest({
     if (msg.role == "user" && discordConfig.addTimestamps)
       finaltext += `\n[${msg?.createdAt?.toISOString() || "unknown time"}]`;
     // ensure assistant messages are valid json, so it keeps using this format.
-    if (msg.role == "assistant") finaltext = JSON.stringify({ reply: finaltext, commands: [] });
+    // Reconstruct bot reactions from the preceding user message into the commands array.
+    if (msg.role == "assistant") {
+      const prevMsg = index > 0 ? messages[index - 1] : null;
+      const reconstructedCommands: Array<{ name: string; args: Record<string, string> }> = [];
+
+      if (prevMsg?.reactions && guildInfo?.botId) {
+        for (const reaction of prevMsg.reactions) {
+          if (reaction.userIds.includes(guildInfo.botId)) {
+            reconstructedCommands.push({ name: "react", args: { emoji: reaction.emoji } });
+          }
+        }
+      }
+
+      finaltext = JSON.stringify({ reply: finaltext, commands: reconstructedCommands });
+
+      // Append reactions received on this bot message (from other users)
+      if (msg.reactions && msg.reactions.length > 0) {
+        const otherReactions = msg.reactions.filter((r) => !r.userIds.includes(guildInfo?.botId || ""));
+        if (otherReactions.length > 0) {
+          const reactionStr = otherReactions.map((r) => `${r.emoji} by ${r.userNames.join(", ")}`).join("; ");
+          finaltext += ` [Message reactions: ${reactionStr}]`;
+        }
+      }
+    }
     aiMessages.push({
       role: msg.role,
       content: finaltext,
@@ -146,6 +170,11 @@ export async function buildAIRequest({
   if (guildInfo?.guildEmojis) {
     const emojisList = guildInfo.guildEmojis.map((e) => `<:${e.name}:${e.id}>`).join(", ");
     aiMessages[0].content += `\nThe server has the following emojis: ${emojisList}`;
+  }
+
+  if (guildInfo?.guildStickers && guildInfo.guildStickers.size > 0) {
+    const stickersList = guildInfo.guildStickers.map((s) => `"${s.name}"`).join(", ");
+    aiMessages[0].content += `\nThe server has the following stickers you can send using the postSticker command: ${stickersList}`;
   }
 
   // Build replacements object including lorebook
@@ -227,7 +256,7 @@ export async function generateAIResponse(
     const userDisplayName = message.author.displayName || message.author.username;
     const username = message.author.username;
     const userId = message.author.id;
-    const history = await fetchMessageHistory(message, config.maxHistoryMessages, botId);
+    const history = await fetchMessageHistory(message, config.maxHistoryMessages, botId || null);
     const formattedHistory = formatMessagesForAI(history);
 
     // Replace mentions in the current message
@@ -236,12 +265,14 @@ export async function generateAIResponse(
     if (config.enableUserStatus) userPresence = await fetchUserPresence(message);
 
     const guildEmojis = message.guild?.emojis.cache || null;
+    const guildStickers = message.guild ? await message.guild.stickers.fetch().catch(() => null) : null;
     const guildName = message.guild?.name || "the server";
     const channelName: string = (message.channel as any)?.name || "a channel";
     const guildInfo = {
       guildName,
       channelName,
       guildEmojis,
+      guildStickers,
       botId,
     };
 
@@ -256,6 +287,7 @@ export async function generateAIResponse(
       role: msg.role,
       content: msg.content,
       createdAt: msg.createdAt,
+      reactions: msg.reactions,
     }));
 
     const trimmedMessages = await trimMessagesToTokenBudget(
@@ -272,6 +304,8 @@ export async function generateAIResponse(
       guildInfo,
       replyContext,
     });
+
+    console.log("Final prompt messages:", messages);
 
     const response = await generateResponse(model, messages, temperature, config.addNothink, images);
 

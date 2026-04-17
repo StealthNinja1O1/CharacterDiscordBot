@@ -67,10 +67,15 @@ export const availableCommands = [
     enabled: discordConfig.allowRenaming,
   },
   {
+    name: "postSticker",
+    args: { stickerName: "string" },
+    description: "Send a sticker from the server. Use the exact sticker name from the available stickers list.",
+    enabled: true,
+  },
+  {
     name: "editOrAddToLorebook",
     args: { entryName: "string", keywords: ["name1", "..."], content: "string" },
-    description:
-      `You can create or update existing lorebook entries about people or things you learn. Do this when you learn something new about a user.
+    description: `You can create or update existing lorebook entries about people or things you learn. Do this when you learn something new about a user.
       You can also add entries but please only update entries that you can see the value of.
       Keywords are what trigger the entry to be included in context, so use them wisely, its smart to add userid, username and displayname, along with possible nicknames or descriptive keywords. 
       USE THIS COMMAND CONSISTENTLY`,
@@ -136,7 +141,7 @@ ${availableCommands
   .join("\n")}
 Use them by adding "commands":[{name:"commandName", "args":{"arg1":"value"}}] in your response. Follow the command descriptions and argument requirements precisely when using them.
 Multiple commands can be used at once by adding more objects to the "commands" array. If you don't want to use any commands, just return an empty array. Always return valid JSON, never deviate from the format or add any commentary outside of it.
-Your message history will always show empty command lists, but you did actually do them, so always fully write out the commands you want to use in the "commands" array.
+Your message history will show the commands you previously used (like reactions). Always fully write out any new commands you want to use in the "commands" array.
 ]
 </rules>
 <lore>
@@ -161,4 +166,11 @@ A member of the discord server {{serverName}} in channel {{channelName}} named {
   model: process.env.LLM_MODEL || "gpt-5-mini",
   temperature: parseFloat(process.env.LLM_TEMPERATURE || "0.7") || 0.7,
   is_default: true,
-} as const;
+};
+
+// Kimi thinking fix by https://github.com/axshb
+if (process.env.LLM_MODEL?.toLowerCase().includes("kimi")) {
+  const promptFix = `[OOC: Keep your thinking short. Do not draft, plan, make bullet points, or anything along those lines. You are confident. Your output should be immediate and direct. Do not revise anything at all before displaying it to {{user}}. That is not your job. Keep the reasoning/thinking to max 300 tokens.]`
+  // inject before `{History start}`
+  DEFAULT_PRESET.prompt_template = DEFAULT_PRESET.prompt_template.replace("{History start}", `${promptFix}\n\n{History start}`);
+}

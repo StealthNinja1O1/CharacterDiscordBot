@@ -1,4 +1,5 @@
 import { encode } from "gpt-tokenizer";
+import { log } from "./logger.js";
 
 /**
  * Count tokens in a string using gpt-tokenizer
@@ -7,7 +8,7 @@ export function countTokens(text: string): number {
   try {
     return encode(text).length;
   } catch (error) {
-    console.error("Error counting tokens:", error);
+    log.error("Error counting tokens:", error);
     return Math.ceil(text.length / 4);
   }
 }

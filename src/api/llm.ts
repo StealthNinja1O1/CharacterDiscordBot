@@ -5,6 +5,7 @@ if (!LLM_BASE_URL) throw new Error("LLM base URL (LLM_BASE_URL) is not configure
 
 import { ImageAttachment } from "../models.js";
 import { discordConfig } from "../config.js";
+import { log } from "../utils/logger.js";
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -71,9 +72,7 @@ export async function generateResponse(
 
       // Add images
       for (const image of images) {
-        // Truncate base64 in logs to avoid exposing sensitive content
-        const shortBase64 = image.base64.length > 100 ? image.base64.substring(0, 100) + "..." : image.base64;
-        console.log(`Adding vision image: ${image.contentType}, data: ${shortBase64}`);
+        log.debug(`Vision image: ${image.contentType} (${(image.base64.length / 1024).toFixed(0)}KB)`);
         content.push({ type: "image_url", image_url: { url: image.base64 } });
       }
 
@@ -92,6 +91,7 @@ export async function generateResponse(
   };
 
   try {
+    const startTime = Date.now();
     const response = await fetch(`${LLM_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
@@ -112,9 +112,20 @@ export async function generateResponse(
       throw new Error("No response from LLM API");
     }
 
+    const elapsed = (Date.now() - startTime) / 1000;
+    const usage = data.usage;
+    if (usage) {
+      const tokPerSec = elapsed > 0 ? (usage.completion_tokens / elapsed).toFixed(1) : "?";
+      log.info(
+        `LLM response: ${usage.prompt_tokens} prompt + ${usage.completion_tokens} completion = ${usage.total_tokens} tokens (${tokPerSec} tok/s, ${elapsed.toFixed(1)}s)`,
+      );
+    } else {
+      log.info(`LLM response received in ${elapsed.toFixed(1)}s (no usage data)`);
+    }
+
     return data.choices[0].message.content;
   } catch (error) {
-    console.error("Error calling LLM API:", error);
+    log.error("LLM API request failed:", error);
     throw error;
   }
 }

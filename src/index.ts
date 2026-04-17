@@ -3,6 +3,7 @@ import { discordConfig } from "./config.js";
 import { DiscordBot } from "./classes/DiscordBot.js";
 import { Character } from "./models.js";
 import { readFileSync, writeFileSync } from "fs";
+import { log } from "./utils/logger.js";
 
 const defaultOnUpdate = async (character: Character) => {
   try {
@@ -23,9 +24,9 @@ const defaultOnUpdate = async (character: Character) => {
     else if (currentCharacterCard.data.character_book) delete currentCharacterCard.data.character_book;
 
     writeFileSync(discordConfig.characterFilePath, JSON.stringify(currentCharacterCard, null, 2), "utf-8");
-    console.log("Character file updated on disk.");
+    log.info("Character file updated on disk");
   } catch (error) {
-    console.error("Error writing character file:", error);
+    log.error("Error writing character file:", error);
     throw error;
   }
 };
@@ -37,6 +38,6 @@ const bot = new DiscordBot({
 });
 
 bot.start().catch((error) => {
-  console.error("Failed to start bot:", error);
+  log.error("Failed to start bot:", error);
   process.exit(1);
 });

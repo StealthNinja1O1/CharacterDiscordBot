@@ -13,8 +13,10 @@ import {
 } from "discord.js";
 import { DiscordBot } from "../classes/DiscordBot.js";
 import CommandManager from "./CommandManager.js";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import { LorebookEntry } from "../models.js";
+import { ChatMemoryBook, saveChatMemoryBook, upsertChatMemoryEntry } from "../tools/chatMemoryBook.js";
+import { log } from "../utils/logger.js";
 import { buildAIRequest, trimMessagesToTokenBudget } from "../tools/prompt.js";
 import { executeBotCommands } from "../utils/botCommandHandler.js";
 import { parseAIResponse } from "../utils/responseParser.js";
@@ -87,6 +89,11 @@ export default class CommandHandler {
         return;
       }
 
+      if (name === "memory") {
+        await this.handleMemoryBookCommand(cmd);
+        return;
+      }
+
       if (name === "configure") {
         await this.handleConfigureCommand(cmd);
         return;
@@ -97,7 +104,7 @@ export default class CommandHandler {
         return;
       }
     } catch (err) {
-      console.error("Command error:", err);
+      log.error("Command error:", err);
       try {
         if (!cmd.replied) await cmd.reply({ content: "Command failed", ephemeral: true });
       } catch (_) {}
@@ -174,9 +181,13 @@ export default class CommandHandler {
             message: targetMessage as any,
             character: this.bot.getCharacter(),
             characterFilePath: config.characterFilePath,
+            chatMemoryBook: this.bot.getChatMemoryBook(),
+            chatMemoryBookPath: config.chatMemoryBookPath,
+            onChatMemoryUpdate: (book) => { this.bot.setChatMemoryBook(book); },
           });
           for (const result of commandResults) {
-            console.log(`Bot command result: ${result.message}`);
+            if (result.success) log.info(`Command: ${result.message}`);
+            else log.warn(`Command failed: ${result.message}`);
           }
         }
 
@@ -185,7 +196,7 @@ export default class CommandHandler {
         await modalInt.editReply(chunks[0]);
         for (let i = 1; i < chunks.length; i++) await modalInt.followUp(chunks[i]);
       } catch (err) {
-        console.error("AskChar modal error:", err);
+        log.error("AskChar modal error:", err);
         try { await modalInt.editReply("*Something went wrong... The static consumes my words.*"); } catch (_) {}
       }
     };
@@ -220,7 +231,7 @@ export default class CommandHandler {
 
       // Can't execute bot commands here as we don't have a message context
       if (parsed.commands && parsed.commands.length > 0) {
-        console.log("Ask command cannot execute bot commands (no message context):", parsed.commands);
+        log.debug("Ask command cannot execute bot commands (no message context):", parsed.commands);
       }
 
       const finalReply = parsed.reply?.trim() || parsed.reply?.trim() || "*...*";
@@ -228,7 +239,7 @@ export default class CommandHandler {
       await cmd.editReply(chunks[0]);
       for (let i = 1; i < chunks.length; i++) await cmd.followUp(chunks[i]);
     } catch (err) {
-      console.error("Ask command error:", err);
+      log.error("Ask command error:", err);
       try {
         await cmd.editReply("*Something went wrong... The static consumes my words.*");
       } catch (_) {}
@@ -262,6 +273,7 @@ export default class CommandHandler {
         mesExample: parsed.data.mes_example || "",
         depthPrompt: parsed.data?.extensions?.depth_prompt || null,
         character_book: parsed.data?.character_book || null,
+        chatMemoryBook: null, 
       };
 
       // Save to configured character file path (default behavior)
@@ -273,7 +285,7 @@ export default class CommandHandler {
 
       await cmd.editReply({ content: `Character updated successfully: ${newCharacter.name}` });
     } catch (err: any) {
-      console.error("Error processing update file:", err);
+      log.error("Error processing update file:", err);
       await cmd.editReply({ content: `Failed to process uploaded file: ${err?.message || String(err)}` });
     }
   }
@@ -433,10 +445,10 @@ export default class CommandHandler {
                     components: [],
                   });
                 } catch (e) {
-                  console.warn("Could not edit original command reply after modal submit:", e);
+                  log.debug("Could not edit original lorebook reply after modal");
                 }
               } catch (modalErr) {
-                console.error("Modal submit error:", modalErr);
+                log.error("Lorebook modal submit error:", modalErr);
                 try {
                   await modalInt.reply({ content: "Edit timed out or failed.", ephemeral: true });
                 } catch (_) {}
@@ -485,9 +497,245 @@ export default class CommandHandler {
         } catch (_) {}
       });
     } catch (err) {
-      console.error("Lorebook command error:", err);
+      log.error("Lorebook command error:", err);
       try {
         await cmd.editReply({ content: `Error opening lorebook: ${(err as any)?.message || String(err)}` });
+      } catch (_) {}
+    }
+  }
+
+  private async handleMemoryBookCommand(cmd: ChatInputCommandInteraction) {
+    await cmd.deferReply({ ephemeral: true });
+
+    try {
+      const config = this.bot.getConfig();
+      const memoryPath = config.chatMemoryBookPath;
+
+      let book: ChatMemoryBook;
+      if (existsSync(memoryPath)) {
+        const data = JSON.parse(readFileSync(memoryPath, "utf-8"));
+        book = { entries: Array.isArray(data.entries) ? data.entries : [] };
+      } else {
+        book = { entries: [] };
+      }
+
+      const entries = book.entries;
+
+      if (!entries || entries.length === 0) {
+        await cmd.editReply({ content: "No memory book entries found. The bot will create entries as it learns." });
+        return;
+      }
+
+      const pageSize = 10;
+      let page = 0;
+      const totalPages = Math.ceil(entries.length / pageSize);
+
+      const makeComponentsForPage = (p: number) => {
+        const start = p * pageSize;
+        const slice = entries.slice(start, start + pageSize) as LorebookEntry[];
+
+        const select = new StringSelectMenuBuilder()
+          .setCustomId(`mem_select_${p}_${cmd.user.id}`)
+          .setPlaceholder(`Select entry (page ${p + 1}/${totalPages})`)
+          .addOptions(
+            ...slice.map((e: LorebookEntry, idx: number) => ({
+              label: (e.name || "(unnamed)").slice(0, 100),
+              value: String(start + idx),
+            })),
+          );
+
+        const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
+
+        const prev = new ButtonBuilder()
+          .setCustomId(`mem_prev_${p}_${cmd.user.id}`)
+          .setLabel("Prev")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(p <= 0);
+        const next = new ButtonBuilder()
+          .setCustomId(`mem_next_${p}_${cmd.user.id}`)
+          .setLabel("Next")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(p >= totalPages - 1);
+        const cancel = new ButtonBuilder()
+          .setCustomId(`mem_cancel_${cmd.user.id}`)
+          .setLabel("Cancel")
+          .setStyle(ButtonStyle.Danger);
+
+        const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(prev, next, cancel);
+
+        return [row1, row2];
+      };
+
+      const content = `Memory book entries: ${entries.length} entries. These are the bot's dynamic memories (editable by both you and the bot).`;
+      await cmd.editReply({ content, components: makeComponentsForPage(page) });
+      const sent = await cmd.fetchReply();
+
+      const collector = sent.createMessageComponentCollector({ time: 120_000 });
+
+      collector.on("collect", async (i) => {
+        if (i.user.id !== cmd.user.id) {
+          await i.reply({ content: "This session is for the command user only.", ephemeral: true });
+          return;
+        }
+
+        if (i.isButton()) {
+          const parts = i.customId.split("_");
+          if (parts[0] !== "mem") return;
+
+          const action = parts[1];
+
+          if (action === "prev") {
+            page = Math.max(0, page - 1);
+            await i.update({
+              components: makeComponentsForPage(page),
+              content: `Memory book entries: ${entries.length} entries.`,
+            });
+            return;
+          }
+
+          if (action === "next") {
+            page = Math.min(totalPages - 1, page + 1);
+            await i.update({
+              components: makeComponentsForPage(page),
+              content: `Memory book entries: ${entries.length} entries.`,
+            });
+            return;
+          }
+
+          if (action === "cancel") {
+            await i.update({ content: "Memory book session cancelled.", components: [] });
+            collector.stop();
+            return;
+          }
+
+          if (action === "back") {
+            await i.update({
+              content: `Memory book entries: ${entries.length} entries.`,
+              components: makeComponentsForPage(page),
+            });
+            return;
+          }
+
+          if (action === "edit") {
+            const idx = parseInt(parts[2], 10);
+            const entry = entries[idx];
+
+            const modal = new ModalBuilder()
+              .setCustomId(`mem_modal_${idx}_${cmd.user.id}`)
+              .setTitle(`Edit: ${entry.name}`);
+            const input = new TextInputBuilder()
+              .setCustomId("content")
+              .setLabel("Entry content")
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(true)
+              .setValue(entry.content || "");
+
+            const row = new ActionRowBuilder<TextInputBuilder>().addComponents(input);
+            modal.addComponents(row);
+
+            await i.showModal(modal);
+
+            collector.stop("modal");
+
+            const modalCustomId = `mem_modal_${idx}_${cmd.user.id}`;
+            const onModal = async (modalInt: any) => {
+              try {
+                if (!modalInt.isModalSubmit || !modalInt.isModalSubmit()) return;
+              } catch (_) {
+                return;
+              }
+
+              if (modalInt.customId !== modalCustomId) return;
+              if (modalInt.user.id !== cmd.user.id) return;
+
+              try {
+                const newContent = modalInt.fields.getTextInputValue("content");
+
+                // Update in-memory and on disk
+                book.entries[idx].content = newContent;
+                saveChatMemoryBook(memoryPath, book);
+                this.bot.setChatMemoryBook({ entries: [...book.entries] });
+
+                await modalInt.reply({ content: `Memory entry "${entries[idx].name}" updated.`, ephemeral: true });
+                try {
+                  await cmd.editReply({
+                    content: `**${entries[idx].name}**\n\n${entries[idx].content}`,
+                    components: [],
+                  });
+                } catch (e) {
+                  log.debug("Could not edit original memory reply after modal");
+                }
+              } catch (modalErr) {
+                log.error("Memory modal submit error:", modalErr);
+                try {
+                  await modalInt.reply({ content: "Edit timed out or failed.", ephemeral: true });
+                } catch (_) {}
+              } finally {
+                this.bot.getClient().removeListener("interactionCreate", onModal);
+              }
+            };
+
+            this.bot.getClient().on("interactionCreate", onModal);
+
+            return;
+          }
+
+          if (action === "delete") {
+            const idx = parseInt(parts[2], 10);
+            const entryName = entries[idx].name;
+            book.entries.splice(idx, 1);
+            saveChatMemoryBook(memoryPath, book);
+            this.bot.setChatMemoryBook({ entries: [...book.entries] });
+
+            await i.update({
+              content: `Deleted memory entry "${entryName}".`,
+              components: [],
+            });
+            collector.stop();
+            return;
+          }
+        }
+
+        if (i.isStringSelectMenu()) {
+          const selected = i.values[0];
+          const idx = parseInt(selected, 10);
+          const entry = entries[idx];
+
+          const viewContent = `**${entry.name}**\nKeywords: ${entry.keys?.join(", ") || "None"}\n\n${entry.content || "(no content)"}`;
+
+          const editBtn = new ButtonBuilder()
+            .setCustomId(`mem_edit_${idx}_${cmd.user.id}`)
+            .setLabel("Edit")
+            .setStyle(ButtonStyle.Primary);
+          const deleteBtn = new ButtonBuilder()
+            .setCustomId(`mem_delete_${idx}_${cmd.user.id}`)
+            .setLabel("Delete")
+            .setStyle(ButtonStyle.Danger);
+          const backBtn = new ButtonBuilder()
+            .setCustomId(`mem_back_${page}_${cmd.user.id}`)
+            .setLabel("Back")
+            .setStyle(ButtonStyle.Secondary);
+          const cancelBtn = new ButtonBuilder()
+            .setCustomId(`mem_cancel_${cmd.user.id}`)
+            .setLabel("Close")
+            .setStyle(ButtonStyle.Danger);
+
+          const row = new ActionRowBuilder<ButtonBuilder>().addComponents(editBtn, deleteBtn, backBtn, cancelBtn);
+
+          await i.update({ content: viewContent, components: [row] });
+          return;
+        }
+      });
+
+      collector.on("end", async () => {
+        try {
+          if (sent && typeof (sent as any).edit === "function") await (sent as any).edit({ components: [] });
+        } catch (_) {}
+      });
+    } catch (err) {
+      log.error("Memory book command error:", err);
+      try {
+        await cmd.editReply({ content: `Error opening memory book: ${(err as any)?.message || String(err)}` });
       } catch (_) {}
     }
   }

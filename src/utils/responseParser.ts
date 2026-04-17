@@ -1,6 +1,9 @@
 /**
  * Parsed response from AI containing the reply text and any bot commands
  */
+
+import { log } from "./logger.js";
+
 export interface ParsedAIResponse {
   reply: string;
   commands: any[] | null;
@@ -74,14 +77,14 @@ export function parseAIResponse(rawResponse: string): ParsedAIResponse {
         try {
           commands = JSON.parse(commandsMatch[0]);
         } catch (e) {
-          console.error("Failed to parse commands array:", commandsMatch[0]);
+          log.error(`Failed to parse commands array: ${commandsMatch[0]}`);
           commands = null;
         }
     }
 
     if (!success) {
       reply = rawResponse;
-      console.error("Failed to parse AI response as JSON. Response was:", rawResponse);
+      log.error(`Failed to parse AI response as JSON. Raw: ${rawResponse}`);
     }
   }
 

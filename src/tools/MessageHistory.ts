@@ -1,5 +1,6 @@
 import { Message, User } from "discord.js";
 import { ImageAttachment, ReactionInfo } from "../models.js";
+import { log } from "../utils/logger.js";
 
 export interface HistoryMessage {
   id: string;
@@ -45,7 +46,7 @@ async function replaceMentionsWithNames(content: string, message: Message): Prom
       }
     } catch (error) {
       // If we can't fetch the user, leave the mention as-is
-      console.warn(`Could not resolve mention for user ${userId}`);
+      log.debug(`Could not resolve mention for user ${userId}`);
     }
   }
 
@@ -109,7 +110,7 @@ export async function fetchMessageHistory(message: Message, limit: number, botId
       });
     }
   } catch (error) {
-    console.error("Error fetching message history:", error);
+    log.error("Error fetching message history:", error);
   }
 
   return messages;
@@ -153,7 +154,7 @@ async function downloadAndEncodeImage(url: string, contentType: string): Promise
   try {
     const response = await fetch(url);
     if (!response.ok) {
-      console.warn(`Failed to download image from ${url}: ${response.statusText}`);
+      log.warn(`Failed to download image from ${url}: ${response.statusText}`);
       return null;
     }
 
@@ -161,7 +162,7 @@ async function downloadAndEncodeImage(url: string, contentType: string): Promise
     const base64 = Buffer.from(buffer).toString("base64");
     return `data:${contentType};base64,${base64}`;
   } catch (error) {
-    console.error(`Error encoding image from ${url}:`, error);
+    log.error(`Error encoding image from ${url}:`, error);
     return null;
   }
 }
@@ -233,7 +234,7 @@ export async function fetchReferencedMessage(message: Message): Promise<Referenc
       images: allRefImages,
     };
   } catch (error) {
-    console.error("Error fetching referenced message:", error);
+    log.error("Error fetching referenced message:", error);
     return null;
   }
 }

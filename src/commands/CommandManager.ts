@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { REST } from "discord.js";
 import { Routes, SlashCommandBuilder, ContextMenuCommandBuilder, ApplicationCommandType } from "discord.js";
 import { discordConfig } from "../config.js";
+import { log } from "../utils/logger.js";
 
 export type CommandEventPayload =
   | { type: "togglerandom" }
@@ -9,6 +10,7 @@ export type CommandEventPayload =
   | { type: "togglebot" }
   | { type: "update"; fileUrl: string; filename: string }
   | { type: "lorebook" }
+  | { type: "memory" }
   | { type: "askchar" }
   | { type: "ask" };
 
@@ -47,6 +49,7 @@ export class CommandManager extends EventEmitter {
         .setDescription("Upload a new character JSON file to update the bot")
         .addAttachmentOption((opt) => opt.setName("file").setDescription("Character JSON file").setRequired(true)),
       new SlashCommandBuilder().setName("lorebook").setDescription("Browse or edit the lorebook"),
+      new SlashCommandBuilder().setName("memory").setDescription("Browse or edit the chat memory book"),
       new SlashCommandBuilder()
         .setName("configure")
         .setDescription("Configure runtime bot behavior")
@@ -79,9 +82,9 @@ export class CommandManager extends EventEmitter {
 
     try {
       await this.rest.put(Routes.applicationCommands(applicationId), { body: [...commands, contextMenuCmd, askCmd] });
-      console.log("Commands registered");
+      log.info("Slash commands registered");
     } catch (err) {
-      console.error("Failed to register commands:", err);
+      log.error("Failed to register commands:", err);
     }
   }
 

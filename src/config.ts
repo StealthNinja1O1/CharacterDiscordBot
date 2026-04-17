@@ -17,7 +17,7 @@ export interface DiscordConfig {
   enableVision: boolean;
   allowRenaming: boolean;
   enableUserStatus: boolean;
-  timeoutSeconds: number;
+  chatMemoryBookPath: string;
 }
 
 export const discordConfig: DiscordConfig = {
@@ -39,7 +39,7 @@ export const discordConfig: DiscordConfig = {
   enableVision: process.env.ENABLE_VISION === "true" || false,
   allowRenaming: process.env.ALLOW_RENAMING === "true" || false,
   enableUserStatus: process.env.ENABLE_USER_STATUS === "true" || false,
-  timeoutSeconds: parseInt(process.env.TIMEOUT_SECONDS || "0", 10),
+  chatMemoryBookPath: process.env.CHAT_MEMORY_BOOK_PATH || "./chatMemory.json",
 };
 
 if (!discordConfig.botToken) throw new Error("DISCORD_BOT_TOKEN is not configured in .env file");

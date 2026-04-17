@@ -1,0 +1,32 @@
+{
+   "entries": [
+      {
+         "name": "Gorillo",
+         "keys": [
+            "Gorillo",
+            "gorilla",
+            "sticker",
+            "SteakedGamer",
+            "fix you",
+            "wrench",
+            "chair",
+            "sad gorilla",
+            "tiny chair"
+         ],
+         "content": "Gorillo is a sticker character featuring a large gorilla sitting on a tiny chair looking contemplative/sad with an existential crisis. He wears a shirt that says \"I CAN FIX YOU\" and has grease stains with a wrench. He has a tiny fox buddy sitting with him. He represents the feeling of being too big for the furniture but too small for the task, existing in a state of mild inconvenience. Very relatable. Needs a pillow for his back problems. Associated with SteakedGamer who created/wrote his story.",
+         "enabled": true,
+         "insertion_order": 10,
+         "case_sensitive": false,
+         "priority": 10,
+         "id": 1,
+         "comment": "",
+         "selective": false,
+         "constant": false,
+         "position": "",
+         "extensions": {},
+         "probability": 100,
+         "selectiveLogic": 0,
+         "secondary_keys": []
+      }
+   ]
+}

@@ -1,10 +1,12 @@
 import { DEFAULT_PRESET, DiscordConfig, discordConfig } from "../config.js";
-import { Character, Message, AIRequestBody, ImageAttachment } from "../models.js";
+import { Character, Message, AIRequestBody, ImageAttachment, CharacterBook, LorebookEntry } from "../models.js";
+import { ChatMemoryBook } from "./chatMemoryBook.js";
 import { processLorebook } from "./lorebook.js";
 import { parseLorebook } from "./normalizeLorebook.js";
 import { generateResponse } from "../api/llm.js";
 import { fetchMessageHistory, formatMessagesForAI } from "./MessageHistory.js";
 import { countTokens } from "../utils/tokenCounter.js";
+import { log } from "../utils/logger.js";
 import { Collection, Message as DiscordMessage, GuildEmoji, Sticker, ActivityType } from "discord.js";
 
 interface Preset {
@@ -33,6 +35,7 @@ interface BuildPromptOptions {
   userName?: string;
   guildInfo?: GuildInfo;
   replyContext?: string | null;
+  chatMemoryBook?: ChatMemoryBook | null;
 }
 
 export async function buildAIRequest({
@@ -41,6 +44,7 @@ export async function buildAIRequest({
   userName = "User",
   guildInfo,
   replyContext,
+  chatMemoryBook,
 }: BuildPromptOptions): Promise<AIRequestBody> {
   const charName = character.name || "Character";
   const charDescription = DEFAULT_PRESET.inject_description
@@ -144,27 +148,68 @@ export async function buildAIRequest({
 
   const temperature = DEFAULT_PRESET.temperature > 1 ? DEFAULT_PRESET.temperature / 100 : DEFAULT_PRESET.temperature;
 
+  // --- Lorebook processing: merge static + dynamic ---
   let lorebookEntries = "Lorebook entries:\n";
+  const staticBook = character.character_book ? await parseLorebook(character.character_book) : null;
 
-  if (character.character_book) {
-    const book = await parseLorebook(character.character_book);
-
-    // create a list of all entries with name and keyword for the lorebook editing context
-    if (discordConfig.allowLorebookEditing) {
-      if (!book.entries || book.entries.length === 0) lorebookEntries += "No entries in the lorebook yet.\n";
-      else
-        for (const entry of book.entries)
-          lorebookEntries += `Entry name: ${entry.name || "Unnamed entry"}; Keywords: ${
-            entry.keys?.join(", ") || "No keywords"
-          };\n`;
+  // Build editable entries listing (for the LLM to know what it can modify)
+  if (discordConfig.allowLorebookEditing) {
+    // Dynamic/editable entries from ChatMemoryBook
+    if (chatMemoryBook && chatMemoryBook.entries.length > 0) {
+      lorebookEntries += "Editable memory entries (you can modify these with editOrAddToLorebook):\n";
+      for (const entry of chatMemoryBook.entries)
+        lorebookEntries += `Entry name: ${entry.name || "Unnamed entry"}; Keywords: ${
+          entry.keys?.join(", ") || "No keywords"
+        };\n`;
+    } else {
+      lorebookEntries += "No editable memory entries yet. You can create them with editOrAddToLorebook.\n";
     }
+    // Static/read-only entries from character.json
+    if (staticBook?.entries && staticBook.entries.length > 0) {
+      lorebookEntries += "\nStatic lore entries (read-only, do NOT try to edit these):\n";
+      for (const entry of staticBook.entries)
+        lorebookEntries += `Entry name: ${entry.name || "Unnamed entry"}; Keywords: ${
+          entry.keys?.join(", ") || "No keywords"
+        };\n`;
+    }
+  } else {
+    // No editing — just list static entries
+    if (staticBook?.entries && staticBook.entries.length > 0) {
+      for (const entry of staticBook.entries)
+        lorebookEntries += `Entry name: ${entry.name || "Unnamed entry"}; Keywords: ${
+          entry.keys?.join(", ") || "No keywords"
+        };\n`;
+    }
+  }
 
-    const { list } = processLorebook(messages, book);
+  // Merge both books into a single book for processLorebook (static first = higher priority)
+  const mergedEntries = [
+    ...(staticBook?.entries || []),
+    ...(chatMemoryBook?.entries || []),
+  ];
+
+  if (mergedEntries.length > 0) {
+    const mergedBook: CharacterBook = {
+      name: staticBook?.name || chatMemoryBook?.entries?.length ? "Merged" : "Lorebook",
+      description: "",
+      scan_depth: staticBook?.scanDepth ?? character.character_book?.scan_depth ?? 12,
+      token_budget: staticBook?.tokenBudget ?? character.character_book?.token_budget ?? 1024,
+      recursive_scanning: staticBook?.recursiveScanning ?? false,
+      extensions: {},
+      entries: mergedEntries.map((e, i) => ({
+        ...e,
+        id: e.id ?? i,
+        name: e.name || "Unnamed",
+      })) as LorebookEntry[],
+    };
+    const { list } = processLorebook(messages, mergedBook as any);
     if (list.length > 0)
       aiMessages[0].content +=
         "\n" + list.map((entry) => `Lorebook entry "${entry?.name}"; content: ${entry.content}`).join("\n ") + "\n";
-    else if (!book.entries || book.entries.length === 0)
+    else
       aiMessages[0].content += "\nNo relevant lorebook entries triggered.";
+  } else {
+    aiMessages[0].content += "\nNo relevant lorebook entries triggered.";
   }
 
   if (guildInfo?.guildEmojis) {
@@ -193,9 +238,6 @@ export async function buildAIRequest({
   aiMessages.forEach((msg) => {
     msg.content = replacePlaceholders(msg.content, replacements);
   });
-
-  // console.log(aiMessages[0].content.slice(-7000));
-  // console.log(aiMessages);;
 
   return {
     model: DEFAULT_PRESET.model,
@@ -251,6 +293,7 @@ export async function generateAIResponse(
   botId?: string | null,
   replyContext?: string | null,
   images: ImageAttachment[] = [],
+  chatMemoryBook?: ChatMemoryBook | null,
 ): Promise<string> {
   try {
     const userDisplayName = message.author.displayName || message.author.username;
@@ -303,15 +346,16 @@ export async function generateAIResponse(
       userName: userDisplayName,
       guildInfo,
       replyContext,
+      chatMemoryBook,
     });
 
-    console.log("Final prompt messages:", messages);
+    log.debug(`Sending ${trimmedMessages.length} messages to LLM (${model})`);
 
     const response = await generateResponse(model, messages, temperature, config.addNothink, images);
 
     return response;
   } catch (error) {
-    console.error("Error generating AI response:", error);
+    log.error("Error generating AI response:", error);
     throw error;
   }
 }
@@ -339,7 +383,7 @@ async function replaceMentionsWithNames(message: DiscordMessage): Promise<string
       }
     } catch (error) {
       // If we can't fetch the user, leave the mention as-is
-      console.warn(`Could not resolve mention for user ${userId}`);
+      log.debug(`Could not resolve mention for user ${userId}`);
     }
   }
 
@@ -351,7 +395,7 @@ async function replaceMentionsWithNames(message: DiscordMessage): Promise<string
  */
 async function fetchUserPresence(message: DiscordMessage): Promise<string> {
   if (!message.guild) {
-    console.warn("Message is not in a guild, cannot fetch presence");
+    log.debug("Message is not in a guild, cannot fetch presence");
     return "";
   }
 
@@ -402,7 +446,7 @@ async function fetchUserPresence(message: DiscordMessage): Promise<string> {
     return statusText || activityText ? ` ${statusText}${activityText}` : "";
   } catch (error) {
     // If we can't fetch presence, continue without it
-    console.warn(`Could not fetch presence for user ${message.author.id}:`, error);
+    log.debug(`Could not fetch presence for user ${message.author.id}:`, error);
     return "";
   }
 }

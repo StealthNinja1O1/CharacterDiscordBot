@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "fs";
 import { discordConfig } from "../config.js";
 import { Character, CharacterCardV2, LorebookEntry } from "../models.js";
+import { log } from "./logger.js";
 
 /**
  * Process lorebook editing commands in the AI response
@@ -94,7 +95,7 @@ export function processLorebookCommands(
       character.character_book = characterCard.data.character_book;
     }
   } catch (error) {
-    console.error("Error processing lorebook commands:", error);
+    log.error("Error processing lorebook commands:", error);
   }
 
   // Remove all commands from the response

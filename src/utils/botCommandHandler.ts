@@ -2,6 +2,8 @@ import { Message, GuildMember } from "discord.js";
 import { BotCommand, Character, LorebookEntry } from "../models.js";
 import { writeFileSync, readFileSync } from "fs";
 import { discordConfig } from "../config.js";
+import { ChatMemoryBook, upsertChatMemoryEntry, saveChatMemoryBook } from "../tools/chatMemoryBook.js";
+import { log } from "./logger.js";
 
 interface CommandResult {
   success: boolean;
@@ -18,19 +20,22 @@ export async function executeBotCommands(
     message: Message;
     character: Character;
     characterFilePath?: string;
+    chatMemoryBook?: ChatMemoryBook;
+    chatMemoryBookPath?: string;
+    onChatMemoryUpdate?: (book: ChatMemoryBook) => void;
   },
 ): Promise<CommandResult[]> {
   const results: CommandResult[] = [];
-  const { message, character, characterFilePath } = context;
+  const { message, character, characterFilePath, chatMemoryBook, chatMemoryBookPath, onChatMemoryUpdate } = context;
 
   for (const cmd of commands) {
     try {
-      const result = await executeCommand(cmd, message, character, characterFilePath);
+      const result = await executeCommand(cmd, message, character, characterFilePath, chatMemoryBook, chatMemoryBookPath, onChatMemoryUpdate);
       results.push(result);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       results.push({ success: false, message: `Error executing ${cmd.name}: ${errorMsg}` });
-      console.error(`Error executing command ${cmd.name}:`, error);
+      log.error(`Error executing command ${cmd.name}:`, error);
     }
   }
 
@@ -42,6 +47,9 @@ async function executeCommand(
   message: Message,
   character: Character,
   characterFilePath?: string,
+  chatMemoryBook?: ChatMemoryBook,
+  chatMemoryBookPath?: string,
+  onChatMemoryUpdate?: (book: ChatMemoryBook) => void,
 ): Promise<CommandResult> {
   switch (cmd.name) {
     case "react":
@@ -54,7 +62,7 @@ async function executeCommand(
       return await executeRenameUser(cmd.args as any, message);
 
     case "editOrAddToLorebook":
-      return await executeEditLorebook(cmd.args as any, character, characterFilePath);
+      return await executeEditLorebook(cmd.args as any, chatMemoryBook, chatMemoryBookPath, onChatMemoryUpdate);
 
     case "postSticker":
       return await executePostSticker(cmd.args as any, message);
@@ -170,15 +178,14 @@ async function executeRenameUser(args: { userId: string; newName: string }, mess
 }
 
 /**
- * Create or update a lorebook entry
- * @param args.entryName - Name of the lorebook entry
- * @param args.keywords - Array of keywords that trigger this entry
- * @param args.content - Content of the lorebook entry
+ * Create or update an entry in the ChatMemoryBook (dynamic lorebook).
+ * Writes only to chatMemory.json, never touches the static character.json lorebook.
  */
 async function executeEditLorebook(
   args: { entryName: string; keywords: string[]; content: string },
-  character: Character,
-  characterFilePath?: string,
+  chatMemoryBook?: ChatMemoryBook,
+  chatMemoryBookPath?: string,
+  onChatMemoryUpdate?: (book: ChatMemoryBook) => void,
 ): Promise<CommandResult> {
   const { entryName, keywords, content } = args;
 
@@ -196,76 +203,26 @@ async function executeEditLorebook(
     return { success: false, message: "Lorebook editing is disabled" };
   }
 
-  const filePath = characterFilePath || discordConfig.characterFilePath;
-  if (!filePath) {
-    return { success: false, message: "No character file path configured" };
-  }
+  const filePath = chatMemoryBookPath || discordConfig.chatMemoryBookPath;
 
   try {
-    // Read and parse character file
-    const characterData = readFileSync(filePath, "utf-8");
-    const characterCard = JSON.parse(characterData);
-
-    // Ensure character_book exists
-    if (!characterCard.data.character_book) {
-      characterCard.data.character_book = {
-        name: "Data Storage",
-        description: "",
-        scan_depth: 8,
-        token_budget: 1024,
-        recursive_scanning: false,
-        extensions: {},
-        entries: [],
-      };
-    }
-
-    const book = characterCard.data.character_book;
-
-    // Find existing entry (case-insensitive)
-    const entryIndex = book.entries.findIndex(
-      (entry: LorebookEntry) => entry.name.toLowerCase() === entryName.toLowerCase(),
+    // Use the in-memory book if available, otherwise load from disk
+    let book: ChatMemoryBook = chatMemoryBook || { entries: [] };
+    const isExistingEntry = book.entries.some(
+      (entry) => entry.name.toLowerCase() === entryName.toLowerCase(),
     );
 
-    if (entryIndex !== -1) {
-      // Update existing entry
-      book.entries[entryIndex].content = content;
-      if (keywords.length > 0) {
-        book.entries[entryIndex].keys = keywords;
-      }
-    } else {
-      // Create new entry
-      const newEntry: LorebookEntry = {
-        name: entryName,
-        keys: keywords.length > 0 ? keywords : [entryName.toLowerCase()],
-        content,
-        enabled: true,
-        insertion_order: 10,
-        case_sensitive: false,
-        priority: 10,
-        id: book.entries.length + 1,
-        comment: "",
-        selective: false,
-        constant: false,
-        position: "",
-        extensions: {},
-        probability: 100,
-        selectiveLogic: 0,
-        secondary_keys: [],
-      };
-      book.entries.push(newEntry);
-    }
+    book = upsertChatMemoryEntry(book, entryName, keywords, content);
+    saveChatMemoryBook(filePath, book);
 
-    // Save to file
-    writeFileSync(filePath, JSON.stringify(characterCard, null, 3), "utf-8");
+    // Update in-memory reference
+    if (onChatMemoryUpdate) onChatMemoryUpdate(book);
 
-    // Update in-memory character
-    character.character_book = book;
-
-    return { success: true, message: `Lorebook entry "${entryName}" ${entryIndex !== -1 ? "updated" : "created"}` };
+    return { success: true, message: `Memory entry "${entryName}" ${isExistingEntry ? "updated" : "created"}` };
   } catch (error) {
     return {
       success: false,
-      message: `Failed to edit lorebook: ${error instanceof Error ? error.message : String(error)}`,
+      message: `Failed to edit memory book: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }

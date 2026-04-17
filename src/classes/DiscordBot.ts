@@ -6,7 +6,9 @@ import { executeBotCommands } from "../utils/botCommandHandler.js";
 import { parseAIResponse } from "../utils/responseParser.js";
 import { generateAIResponse } from "../tools/prompt.js";
 import { fetchReferencedMessage, extractImagesFromMessage, extractStickerImagesFromMessage } from "../tools/MessageHistory.js";
+import { loadChatMemoryBook, saveChatMemoryBook, upsertChatMemoryEntry } from "../tools/chatMemoryBook.js";
 import CommandHandler from "../commands/CommandHandler.js";
+import { log } from "../utils/logger.js";
 
 export interface DiscordBotOptions {
   discordConfig: DiscordConfig;
@@ -30,6 +32,7 @@ export class DiscordBot {
   private isBusy = new Map<string, boolean>();
   private lastResponseTimestamp = new Map<string, number>();
   public botDiscordId: string | null = null;
+  private chatMemoryBook;
 
   constructor(options: DiscordBotOptions) {
     this.discordConfig = options.discordConfig;
@@ -42,6 +45,8 @@ export class DiscordBot {
     } else {
       this.character = options.characterSource;
     }
+
+    this.chatMemoryBook = loadChatMemoryBook(this.discordConfig.chatMemoryBookPath);
 
     // Optional intent for user status if enabled in config
     const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent];
@@ -69,9 +74,10 @@ export class DiscordBot {
         mesExample: parsed.data.mes_example || "",
         depthPrompt: parsed.data?.extensions?.depth_prompt || null,
         character_book: parsed.data?.character_book || null,
+        chatMemoryBook: null, // loaded separately from chatMemory.json
       };
       if (character.depthPrompt && (!character.depthPrompt.depth || !character.depthPrompt.prompt)) {
-        console.warn("Invalid depth prompt configuration in character.json. Disabling depth prompt.");
+        log.warn("Invalid depth prompt configuration, disabling");
         character.depthPrompt = null;
       }
       if (!character.name || !character.description) {
@@ -79,18 +85,21 @@ export class DiscordBot {
       }
       return character;
     } catch (error) {
-      console.error("Error loading character.json:", error);
+      log.error("Error loading character file:", error);
       throw error;
     }
   }
 
   private setupEventHandlers() {
     this.client.once(Events.ClientReady, async () => {
-      console.log(`Logged in as ${this.client.user?.tag}`);
       this.botDiscordId = this.client.user?.id || null;
-      console.log(`Character: ${this.character.name}`);
-      console.log(`Monitoring channel: ${this.discordConfig.channelId || "all channels"}`);
-      console.log(`Random response rate: 1 in ${this.discordConfig.randomResponseRate}`);
+      log.info(`Logged in as ${this.client.user?.tag}`);
+      log.info(`Character: ${this.character.name}`);
+      log.info(`Channels: ${this.discordConfig.channelId.length > 0 ? this.discordConfig.channelId.join(", ") : "all"}`);
+      log.info(`Random response rate: 1 in ${this.discordConfig.randomResponseRate}`);
+      log.info(`Vision: ${this.discordConfig.enableVision ? "enabled" : "disabled"} | Memory book editing: ${this.discordConfig.allowLorebookEditing ? "enabled" : "disabled"}`);
+      log.info(`Model: ${DEFAULT_PRESET.model} | Max tokens: ${this.discordConfig.maxContextTokens} | History: ${this.discordConfig.maxHistoryMessages} messages`);
+      log.info(`Memory book: ${this.chatMemoryBook.entries.length} entries loaded`);
 
       await this.commandHandler.registerCommands(this.client.user!.id);
     });
@@ -190,8 +199,9 @@ export class DiscordBot {
         this.botDiscordId,
         replyContext,
         allImages,
+        this.chatMemoryBook,
       );
-      console.log("Raw AI response:", response);
+      log.debug(`Raw LLM response: ${response}`);
       const parsed = parseAIResponse(response);
       let reply = parsed.reply;
 
@@ -201,9 +211,13 @@ export class DiscordBot {
           message,
           character: this.character,
           characterFilePath: this.discordConfig.characterFilePath,
+          chatMemoryBook: this.chatMemoryBook,
+          chatMemoryBookPath: this.discordConfig.chatMemoryBookPath,
+          onChatMemoryUpdate: (updated) => { this.chatMemoryBook = updated; },
         });
         for (const result of commandResults) {
-          console.log(`Bot command result: ${result.message}`);
+          if (result.success) log.info(`Command: ${result.message}`);
+          else log.warn(`Command failed: ${result.message}`);
         }
       }
 
@@ -216,7 +230,7 @@ export class DiscordBot {
     } catch (error) {
       if (typingInterval) clearInterval(typingInterval);
 
-      console.error("Error handling message:", error);
+      log.error("Error handling message:", error);
       await message.reply("*Something went wrong... The static consumes my words.*");
     } finally {
       this.isBusy.set(message.channelId, false);
@@ -227,6 +241,14 @@ export class DiscordBot {
   // Public getters/setters for command handler
   public getCharacter(): Character {
     return this.character;
+  }
+
+  public getChatMemoryBook() {
+    return this.chatMemoryBook;
+  }
+
+  public setChatMemoryBook(book: typeof this.chatMemoryBook) {
+    this.chatMemoryBook = book;
   }
 
   public setCharacter(character: Character) {

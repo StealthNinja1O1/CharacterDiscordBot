@@ -1,20 +1,55 @@
 # Character Discord Bot
 
-A Discord bot that simulates a character defined by a Character Card V2 JSON file. The bot uses OpenAI-compatible APIs to generate responses based on the character's personality and conversation context.
-
-## Overview
-
-This is a straightforward implementation that covers the essential features needed for a character roleplay bot in Discord. It reads character definitions from a standard Character Card V2 file and uses only the core fields (name, description, and example messages) to keep the implementation simple and maintainable.
-
-The bot is functional but basic by design. It focuses on reliable conversation handling rather than advanced features. If you need a simple way to bring a character to life in Discord without complexity, this works well.
+A Discord bot that roleplays as a character defined by a Character Card V2 JSON file. Uses OpenAI-compatible APIs for response generation with a DIY tool-calling system that works with any model - including non-tool-calling ones.
 
 ## Features
 
-- Responds when mentioned or when the character name appears in messages
-- Optional random response chance (configurable)
-- Maintains conversation context with token-based limiting
-- Admin-only slash command to toggle random responses
-- Can be locked to a specific channel
+### Core
+- **Character-based RP** - Reads Character Card V2 files (name, description, examples, depth prompt, lorebook)
+- **Smart triggers** - Responds when mentioned, when the character name appears, on configured keywords, or randomly
+- **Token-aware context** - Automatically trims message history to fit within token limits
+- **Multi-channel support** - Can be locked to specific channels or monitor all channels
+- **Timestamps** - Optional timestamps in message context for temporal awareness
+- **User presence** - Optionally shows Discord status/activities in context
+
+### Tool-Calling System (DIY JSON)
+The bot outputs structured JSON with `reply` and `commands` fields. This works with any model that can follow JSON format instructions:
+
+- **`react`** - React to messages with emojis (unicode or custom server emojis)
+- **`renameSelf`** - Change the bot's nickname (gated by `ALLOW_RENAMING`, runtime-guarded against prompt injection)
+- **`renameUser`** - Change a user's nickname (permission-checked, runtime-guarded)
+- **`postSticker`** - Send a server sticker by name
+- **`editOrAddToLorebook`** - Create or update dynamic memory entries (writes to `chatMemory.json`, never touches static lorebook)
+
+### Stickers
+- Server stickers are listed in the system prompt so the bot knows what's available
+- Sticker-only messages are translated to `Sent sticker: "Name"` in context
+- When vision is enabled, sticker images are passed to the LLM so the bot can "see" them
+- Stickers in replied-to messages are also passed as vision context
+
+### Reactions
+- Per-message reactions are shown inline in context: `[Reactions: 👍 by Alice; 😂 by Bot]`
+- The bot's past reactions are reconstructed in history as commands - so the LLM sees what it previously did
+- The bot can also see reactions from others on its own messages
+
+### Lorebook System
+- **Static lorebook** - Entries from the character card (`character.json`). Read-only in the prompt; the bot is told not to edit these
+- **Chat Memory Book** - Dynamic entries stored in `chatMemory.json`. The bot creates and updates these as it learns about users and events
+- Both are merged and processed together, with static entries taking higher priority
+- The prompt clearly labels which entries are editable vs read-only
+
+### Slash Commands
+| Command | Description |
+|---------|-------------|
+| `/togglerandom` | Toggle random responses on/off |
+| `/togglementions` | Toggle whether the bot responds to mentions |
+| `/togglebot` | Enable/disable all bot responses |
+| `/update` | Upload a new character JSON file |
+| `/lorebook` | Browse and edit static lorebook entries |
+| `/memory` | Browse, edit, or delete dynamic memory book entries |
+| `/configure` | Adjust runtime settings (history, tokens, keywords, etc.) |
+| `/ask` | Send a prompt directly to the character |
+| `Right-click → Ask` | Context menu command to ask about a specific message |
 
 ## Requirements
 
@@ -31,83 +66,84 @@ npm install
 
 ## Configuration
 
-Configuration can be done via environment variables (.env file) or by editing `src/config.ts` directly.
+All configuration is via environment variables (`.env` file).
 
-### Environment Variables (.env)
+### Environment Variables
 
 ```env
+# ===========================================
 # LLM API Configuration
-LLM_API_KEY=
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_MODEL=gpt-4o
-LLM_TEMPERATURE=0.7
+# ===========================================
+LLM_API_KEY=                    # API key for your LLM provider
+LLM_BASE_URL=https://api.openai.com/v1  # Base URL for the chat completions endpoint
+LLM_MODEL=gpt-4o               # Model name to use
+LLM_TEMPERATURE=0.7            # Model temperature (0-2)
 
+# ===========================================
 # Discord Bot Configuration
-DISCORD_BOT_TOKEN=
-DISCORD_CHANNEL_ID=
-DISCORD_ALLOWED_USERS=1402920090344755323,1234567890
+# ===========================================
+DISCORD_BOT_TOKEN=              # Your Discord bot token (required)
+DISCORD_CHANNEL_ID=             # Channel IDs to respond in (comma-separated, leave empty for all)
+DISCORD_ALLOWED_USERS=          # User IDs allowed to use admin slash commands (comma-separated)
 
+# ===========================================
 # Bot Behavior Settings
-RANDOM_RESPONSE_RATE=1 # Set to -1 to disable random responses
-MAX_HISTORY_MESSAGES=30
-MAX_CONTEXT_TOKENS=20000
-IGNORE_OTHER_BOTS=true
-TRIGGER_KEYWORDS=assistant,bot,helper,chatgpt
-ADD_TIMESTAMPS=true # Add timestamps to messages
-MIN_RESPONSE_INTERVAL_SECONDS=0
-REPLY_TO_MENTIONS=true
-MENTION_TRIGGER_ALLOWED_USERS=1402920090344755323,1234567890
-ADD_NOTHINK=false
-ENABLE_USER_STATUS=true
-ENABLE_VISION=true
-ALLOW_RENAMING=false
+# ===========================================
+RANDOM_RESPONSE_RATE=50         # Respond randomly to 1 in X messages (-1 to disable)
+MAX_HISTORY_MESSAGES=30         # Number of recent messages to fetch for context
+MAX_CONTEXT_TOKENS=20000        # Maximum tokens for context (includes system prompt)
+IGNORE_OTHER_BOTS=true          # Whether to ignore messages from other bots
+TRIGGER_KEYWORDS=               # Additional keywords that trigger responses (comma-separated)
+ADD_TIMESTAMPS=true             # Add timestamps to messages in context
+MIN_RESPONSE_INTERVAL_SECONDS=0 # Minimum seconds between responses in the same channel
+REPLY_TO_MENTIONS=true          # If false, bot won't reply to mentions (unless whitelisted)
+MENTION_TRIGGER_ALLOWED_USERS=  # User IDs that always trigger mention/keyword replies (comma-separated)
+ADD_NOTHINK=false               # Adds disable-thinking tag for models that support it
+ENABLE_VISION=true              # Pass images/stickers to the LLM (model must support vision)
+ENABLE_USER_STATUS=true         # Show user Discord status/activities in context (requires Presence Intent)
+ALLOW_RENAMING=false            # Allow the bot to rename itself and others via commands
 
-# Lorebook
-ALLOW_LOREBOOK_EDITING=false
-# Character File Path
-CHARACTER_FILE_PATH=./character.json
-
+# ===========================================
+# Lorebook & Memory
+# ===========================================
+ALLOW_LOREBOOK_EDITING=false    # Allow the character to create/update memory book entries
+CHARACTER_FILE_PATH=./character.json  # Path to the character card JSON file
+CHAT_MEMORY_BOOK_PATH=./chatMemory.json  # Path to the dynamic memory book (auto-created)
+LOG_LEVEL=INFO                  # Log level: DEBUG, INFO, WARN, ERROR (default: INFO)
 ```
 
-### Configuration Options
+### Configuration Details
 
 **LLM Settings:**
-- `LLM_API_KEY` - API key for your LLM provider
-- `LLM_BASE_URL` - Base URL for the API endpoint
-- `LLM_MODEL` - Model name to use
-- `LLM_TEMPERATURE` - Model temperature
+- `LLM_API_KEY` - API key for your provider
+- `LLM_BASE_URL` - Base URL for the chat completions endpoint
+- `LLM_MODEL` - Model identifier (e.g. `gpt-4o`, `anthropic/claude-3.5-sonnet`, `deepseek/deepseek-v3.2`)
+- `LLM_TEMPERATURE` - Generation temperature (0 = deterministic, 2 = very random)
 
 **Discord Settings:**
-- `DISCORD_BOT_TOKEN` - Your Discord bot token
-- `DISCORD_CHANNEL_ID` - Channel ID where the bot responds (leave empty for all channels, comma seperated for multiple)
-- `DISCORD_ALLOWED_USERS` - User IDs allowed to use admin commands
+- `DISCORD_BOT_TOKEN` - Bot token from the Discord Developer Portal
+- `DISCORD_CHANNEL_ID` - Restrict to specific channels (comma-separated). Leave empty to respond everywhere
+- `DISCORD_ALLOWED_USERS` - User IDs that can use admin slash commands (comma-separated)
 
-**Behavior:**
-- `RANDOM_RESPONSE_RATE` - Responds randomly to 1 in X messages (-1 to disable)
-- `MAX_HISTORY_MESSAGES` - Number of recent messages to fetch
-- `MAX_CONTEXT_TOKENS` - Maximum tokens for context (includes system prompt)
-- `IGNORE_OTHER_BOTS` - Whether to ignore messages from other bots
-- `TRIGGER_KEYWORDS` - Additional keywords that trigger responses (comma-separated)
-- `MIN_RESPONSE_INTERVAL_SECONDS` - Minimum time in seconds to wait before replying again in the same channel (default: 0), bypassed by `MENTION_TRIGGER_ALLOWED_USERS`
-- `REPLY_TO_MENTIONS` - If `false`, the bot will not reply when directly mentioned, only by allowed people
-- `MENTION_TRIGGER_ALLOWED_USERS` - Comma-separated list of user IDs allowed to trigger mention/trigger keyword replies even if REPLY_TO_MENTIONS is set to false.
-- `ADD_NOTHINK` - If `true` the text `/nothink` will be added to the last user prompt to disable thinking. Works for GLM at least.
-- `ENABLE_VISION` - If `true` it will pass images in the message that triggered the bot, or where you reply to, to the LLM. Make sure your model supports it.
-- `ENABLE_USER_STATUS` - If `true` everyones status will be added to the context. Disabling will also remove the need for "Presence Intent"
-- `ALLOW_RENAMING` - If `true` the bot can rename itself and members if the permissions are set.
+**Trigger Behavior:**
+- `RANDOM_RESPONSE_RATE` - Bot responds to roughly 1-in-X messages. Set to `0` or `-1` to disable
+- `REPLY_TO_MENTIONS` - Whether the bot responds when mentioned or its name is said
+- `MENTION_TRIGGER_ALLOWED_USERS` - Users who bypass `REPLY_TO_MENTIONS=false` and `MIN_RESPONSE_INTERVAL_SECONDS`
+- `TRIGGER_KEYWORDS` - Additional words that trigger a response (full word match)
+- `MIN_RESPONSE_INTERVAL_SECONDS` - Cooldown between responses per channel
 
-**Lorebook:**
-- `ALLOW_LOREBOOK_EDITING` - Allow the character to update their own lorebook entries (true/false)
+**Vision & Media:**
+- `ENABLE_VISION` - When `true`, image attachments and sticker images are passed to the LLM as base64. Your model must support multimodal input
+- `ENABLE_USER_STATUS` - When `true`, user presence (online/idle/dnd, activities) is added to context. Requires the Presence Intent in the Discord Developer Portal
 
-**Character file:**
-- `CHARACTER_FILE_PATH` - File path for the character file (default: `./character.json`)
+**Lorebook & Memory:**
+- `ALLOW_LOREBOOK_EDITING` - When `true`, the bot can create and update entries in the Chat Memory Book via the `editOrAddToLorebook` command. Static lorebook entries are never modified
+- `CHARACTER_FILE_PATH` - Path to the Character Card V2 JSON file
+- `CHAT_MEMORY_BOOK_PATH` - Path to the dynamic memory book file. Auto-created if it doesn't exist
 
-## Setting Up LLM API
+## Setting Up the LLM API
 
 ### OpenAI
-
-1. Get an API key from https://platform.openai.com/api-keys
-2. Configure:
 ```env
 LLM_API_KEY=sk-...
 LLM_BASE_URL=https://api.openai.com/v1
@@ -115,72 +151,70 @@ LLM_MODEL=gpt-4o
 ```
 
 ### OpenRouter
-
-OpenRouter provides access to multiple LLM providers through a single API.
-
-1. Get an API key from https://openrouter.ai/keys
-2. Configure:
+OpenRouter provides access to many providers through a single API:
 ```env
 LLM_API_KEY=sk-or-v1-...
 LLM_BASE_URL=https://openrouter.ai/api/v1
 LLM_MODEL=anthropic/claude-3.5-sonnet
 ```
 
-3. Optional: Add HTTP referrer header for rankings (edit `src/api/llm.ts`):
-```typescript
-headers: {
-  "HTTP-Referer": "your-site-url",
-  "X-Title": "your-app-name"
-}
-```
-
 ### Other Providers
-
 Any OpenAI-compatible API works:
 - **Local LLMs**: Ollama, LM Studio, text-generation-webui
-- **Anthropic Claude**: Through OpenRouter or with adapter
 - **Zhipu AI (GLM)**: Direct API access
-- **Together AI, Groq, etc**: Most modern APIs follow OpenAI format
+- **Together AI, Groq, DeepSeek**: Most modern APIs follow the OpenAI format
 
-Just set the `LLM_BASE_URL` to the provider's endpoint.
+Just set `LLM_BASE_URL` to the provider's chat completions endpoint.
 
 ## Discord Bot Setup
 
-1. Create application at https://discord.com/developers/applications
-2. Go to Bot section, create bot, copy token
-3. Enable "Message Content Intent" and "Presence Intent" under Privileged Gateway Intents
-4. Go to OAuth2 > URL Generator
+1. Create an application at https://discord.com/developers/applications
+2. Go to **Bot** → create bot → copy token
+3. Enable **Message Content Intent** under Privileged Gateway Intents
+4. Optionally enable **Presence Intent** (only if `ENABLE_USER_STATUS=true`)
+5. Go to **OAuth2 → URL Generator**:
    - Scopes: `bot`, `applications.commands`
    - Permissions: Send Messages, Read Message History
-   - Optional Permissions for commands: Add reactions, Manage Nicknames, Change Nickname,
-5. Use generated URL to invite bot to your server
-6. Enable Developer Mode in Discord (Settings > Advanced)
-7. Right-click channel, Copy ID for `DISCORD_CHANNEL_ID`
-8. Right-click your username, Copy ID for `DISCORD_ALLOWED_USERS`
+   - Optional: Add Reactions, Manage Nicknames
+6. Use the generated URL to invite the bot
+7. Enable **Developer Mode** in Discord (Settings → Advanced) to copy IDs
 
 ## Character Configuration
 
-Edit `src/character.json` with your character. The bot uses only these fields:
-- `data.name` - Character name
-- `data.description` - Personality and background
-- `data.mes_example` - Example dialogue
-- `data.extensions.depth_prompt` - Depth prompt (optional)
-- `data.character_book` - Attached lorebook from chub (optional)
+The bot reads Character Card V2 files. Supported fields:
 
-Example: (outdated)
+| Field | Description |
+|-------|-------------|
+| `data.name` | Character name (used for triggers and `{{char}}`) |
+| `data.description` | Personality, background, and behavior rules |
+| `data.mes_example` | Example dialogue format |
+| `data.extensions.depth_prompt` | Instructions injected at a specific conversation depth |
+| `data.character_book` | Static lorebook entries (read-only at runtime) |
+
+Example minimal character:
 ```json
 {
   "spec": "chara_card_v2",
   "spec_version": "2.0",
   "data": {
-    "name": "Assistant",
-    "description": "A helpful AI assistant.",
-    "mes_example": "<START>\n{{char}}: Hello! How can I help you today?"
+    "name": "MyCharacter",
+    "description": "A friendly and curious AI character who loves to chat.",
+    "mes_example": "<START>\n{{char}}: Hello! Nice to meet you!"
   }
 }
 ```
 
-Other Character Card V2 fields are ignored. This keeps the implementation simple.
+### Template Placeholders
+
+The system prompt supports these placeholders:
+- `{{char}}` - Character name
+- `{{user}}` - Display name of the user who triggered the response
+- `{{description}}` - Character description
+- `{{mesExamples}}` - Example messages
+- `{{lorebookEntries}}` - Lorebook entry listing (for editing context)
+- `{{serverName}}` - Discord server name
+- `{{channelName}}` - Discord channel name
+- `{{discordId}}` - Bot's Discord user ID
 
 ## Running
 
@@ -194,92 +228,46 @@ For development with auto-rebuild:
 npm run watch
 ```
 
-## Usage
+With Docker:
+```bash
+docker-compose up -d
+```
 
-In Discord:
-- Mention the bot: `@BotName hello`
-- Use character name: `Hey CharacterName, how are you?`
-- Use trigger keywords (if configured)
-- Random responses (if enabled)
+## How It Works
 
-Slash commands (admin-only)
-
-The bot exposes a set of admin-only slash commands. Only users listed in `DISCORD_ALLOWED_USERS` may run these commands.
-
-- `/togglerandom`
-  - Description: Toggle whether the bot sends random, unsolicited responses.
-  - Usage: `/togglerandom`
-  - Notes: This flips the runtime flag; it does not persist to disk.
-
-- `/togglementions`
-  - Description: Toggle whether the bot replies when directly mentioned.
-  - Usage: `/togglementions`
-  - Notes: When disabled, mention triggers are ignored (except when a user is explicitly allowed via `MENTION_TRIGGER_ALLOWED_USERS`). This change is runtime-only.
-
-- `/togglebot`
-  - Description: Temporarily enable or disable the bot's response behavior.
-  - Usage: `/togglebot`
-  - Notes: This toggles a runtime 'enabled' flag. Prefer `min response interval` configuration for finer control.
-
-- `/update` (file upload)
-  - Description: Upload a new Character Card JSON to replace the active character definition.
-  - Usage: `/update file:<attachment>` (attach the character JSON file)
-  - Validation: The uploaded file is parsed and checked for required fields (`data.name` and `data.description`). If valid, the file is written to the path configured by `CHARACTER_FILE_PATH` and the in-memory character is reloaded immediately.
-  - Notes: The command overwrites the current character file. Consider enabling backups or adding a confirmation workflow if you want safer updates.
-
-- `/lorebook`
-  - Description: Browse and edit the character's lorebook entries interactively.
-  - Usage: `/lorebook`
-  - Behavior: Opens an ephemeral UI for the command user with paginated select menus (10 entries per page), Prev/Next navigation, and an Edit button which opens a modal for editing an entry's content. Submissions update `character.json` and the in-memory character immediately.
-  - Notes: Designed to scale to large lorebooks by paging entries. Only the invoking admin sees the UI and can make edits.
-
-- `/configure` (runtime configuration)
-  - Description: Change runtime behavior settings without restarting the bot.
-  - Usage: `/configure [random_response_rate] [max_history_messages] [max_context_tokens] [ignore_other_bots] [trigger_keywords] [add_timestamps] [min_response_interval_seconds]`
-  - Options:
-    - `random_response_rate` (integer) — RANDOM_RESPONSE_RATE (1 in N; 0 disables)
-    - `max_history_messages` (integer) — MAX_HISTORY_MESSAGES
-    - `max_context_tokens` (integer) — MAX_CONTEXT_TOKENS
-    - `ignore_other_bots` (boolean) — IGNORE_OTHER_BOTS
-    - `trigger_keywords` (string) — TRIGGER_KEYWORDS (comma-separated)
-    - `add_timestamps` (boolean) — ADD_TIMESTAMPS
-    - `min_response_interval_seconds` (integer) — MIN_RESPONSE_INTERVAL_SECONDS
-  - Notes: Changes are applied in-memory only. If you want persistent configuration across restarts, use a saved runtime config file (recommended) or persist to `.env` manually.
-
-## Lorebook Editing (Optional Feature)
-
-If `ALLOW_LOREBOOK_EDITING=true` is set, the character can update their own lorebook entries based on conversations.
-
-### How It Works
-
-1. The character can update existing lorebook entries by using a special command in their response
-2. The command format: `createOrEditLore("EntryName", "new content here")`
-3. The command is automatically removed from the response before sending to Discord
-4. Changes are saved directly to the character.json file
-
-### Use Cases
-
-- Character learns new information about Discord server members
-- Character updates facts about ongoing events or situations
-- Character maintains memory of important details across sessions
-
-The lorebook entry "SteakedGamer" is updated, and the command is hidden from users.
-
-### Security Notes
-- Changes persist across bot restarts
-- You can disable this feature by setting `ALLOW_LOREBOOK_EDITING=false` or omitting it
+1. A message triggers the bot (mention, keyword, name, or random chance)
+2. Message history is fetched, with reactions and stickers extracted
+3. The system prompt is built with character info, lorebook matches, emoji/sticker lists, and conversation history
+4. The LLM returns JSON: `{ "reply": "...", "commands": [...] }`
+5. Commands are executed (react, rename, post sticker, edit memory, etc.)
+6. The reply is sent to Discord
 
 ## Project Structure
 
 ```
 src/
-  character.json          # Character definition
-  config.ts              # Configuration
-  index.ts              # Main bot logic
-  api/llm.ts           # LLM API client
-  classes/MessageHistory.ts  # Message handling
-  utils/tokenCounter.ts     # Token counting
-  tools/prompt.ts          # Prompt building
+  index.ts              # Entry point
+  config.ts             # Configuration and command definitions
+  models.ts             # TypeScript type definitions
+  types.ts              # Lorebook-specific types
+  api/
+    llm.ts              # OpenAI-compatible API client
+  classes/
+    DiscordBot.ts       # Main bot class with event handlers
+  commands/
+    CommandHandler.ts   # Slash command handler
+    CommandManager.ts   # Slash command registration
+  tools/
+    lorebook.ts         # Lorebook keyword matching engine
+    normalizeLorebook.ts # Lorebook format normalization
+    chatMemoryBook.ts   # Dynamic memory book load/save/upsert
+    MessageHistory.ts   # History fetching, reactions, stickers, vision
+    prompt.ts           # Prompt building, token trimming, reaction reconstruction
+  utils/
+    botCommandHandler.ts # Execute commands from AI responses
+    responseParser.ts   # Parse AI JSON responses
+    tokenCounter.ts     # Token counting for context management
+    lorebookEditor.ts   # Legacy lorebook command processing (regex-based)
 ```
 
 ## License

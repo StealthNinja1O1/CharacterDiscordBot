@@ -43,6 +43,7 @@ export interface Character {
   mesExample: string;
   depthPrompt: DepthPrompt | null;
   character_book: CharacterBook | null;
+  chatMemoryBook: CharacterBook | null;
 }
 
 export interface CharacterCardV2 {

@@ -24,41 +24,9 @@ export interface FormattedMessage {
 }
 
 /**
- * Replace Discord mentions (<@userid>) with display names
- */
-async function replaceMentionsWithNames(content: string, message: Message): Promise<string> {
-  let processedContent = content;
-
-  // Match user mentions: <@userid> or <@!userid>
-  const mentionPattern = /<@!?(\d+)>/g;
-  const mentions = Array.from(content.matchAll(mentionPattern));
-
-  for (const match of mentions) {
-    const userId = match[1];
-    const mentionText = match[0];
-
-    try {
-      // Try to get the member from the guild
-      if (message.guild) {
-        const member = await message.guild.members.fetch(userId);
-        const displayName = member.displayName || member.user.displayName || member.user.username;
-        processedContent = processedContent.replace(mentionText, `@${displayName}`);
-      }
-    } catch (error) {
-      // If we can't fetch the user, leave the mention as-is
-      log.debug(`Could not resolve mention for user ${userId}`);
-    }
-  }
-
-  return processedContent;
-}
-
-/**
  * Fetches message history from a Discord channel
  */
 export async function fetchMessageHistory(message: Message, limit: number, botId: string | null): Promise<HistoryMessage[]> {
-  const messages: HistoryMessage[] = [];
-
   try {
     const fetchedMessages = await message.channel.messages.fetch({
       limit: limit,
@@ -67,53 +35,89 @@ export async function fetchMessageHistory(message: Message, limit: number, botId
 
     const sortedMessages = Array.from(fetchedMessages.values()).sort((a, b) => a.createdTimestamp - b.createdTimestamp);
 
+    // got high latency. every mention was a serial guild.members.fetch per message. 
+    // collect unique IDs here, resolve in parallel below.
+    const mentionPattern = /<@!?(\d+)>/g;
+    const allMentionIds = new Set<string>();
     for (const msg of sortedMessages) {
-      const hasStickers = msg.stickers.size > 0;
-      if (msg.author.bot && msg.content.trim() === "" && !hasStickers) continue;
-      let processedContent = await replaceMentionsWithNames(msg.content, msg);
-
-      // Translate stickers into text context
-      if (hasStickers) {
-        const stickerStr = Array.from(msg.stickers.values())
-          .map((s) => `Sent sticker: "${s.name}"`)
-          .join(", ");
-        processedContent = processedContent.trim()
-          ? `${processedContent}\n${stickerStr}`
-          : stickerStr;
+      for (const match of msg.content.matchAll(mentionPattern)) {
+        allMentionIds.add(match[1]);
       }
-      const isBotMessage = msg.author.bot && (botId && msg.author.id === botId);
-
-      // Fetch reactions for this message
-      const reactions: ReactionInfo[] = [];
-      if (msg.reactions.cache.size > 0) {
-        for (const reaction of msg.reactions.cache.values()) {
-          try {
-            const users = await reaction.users.fetch();
-            reactions.push({
-              emoji: reaction.emoji.toString(),
-              userIds: users.map((u) => u.id),
-              userNames: users.map((u) => u.displayName || u.username),
-            });
-          } catch {
-            // Skip reactions we can't fetch
-          }
-        }
-      }
-
-      messages.push({
-        id: msg.id,
-        role: isBotMessage ? "assistant" : "user",
-        content: processedContent,
-        createdAt: msg.createdAt,
-        member: msg.author,
-        reactions: reactions.length > 0 ? reactions : undefined,
-      });
     }
+
+    const memberNameMap = new Map<string, string>();
+    if (message.guild && allMentionIds.size > 0) {
+      await Promise.all([...allMentionIds].map(async (userId) => {
+        const cached = message.guild!.members.cache.get(userId);
+        if (cached) {
+          memberNameMap.set(userId, cached.displayName || cached.user.displayName || cached.user.username);
+          return;
+        }
+        try {
+          const member = await message.guild!.members.fetch(userId);
+          memberNameMap.set(userId, member.displayName || member.user.displayName || member.user.username);
+        } catch {
+          log.debug(`Could not resolve mention for user ${userId}`);
+        }
+      }));
+    }
+
+    const resolveMentions = (content: string): string =>
+      content.replace(mentionPattern, (_, userId) => {
+        const name = memberNameMap.get(userId);
+        return name ? `@${name}` : `<@${userId}>`;
+      });
+
+    const processed = await Promise.all(
+      sortedMessages.map(async (msg) => {
+        const hasStickers = msg.stickers.size > 0;
+        if (msg.author.bot && msg.content.trim() === "" && !hasStickers) return null;
+
+        let processedContent = resolveMentions(msg.content);
+
+        if (hasStickers) {
+          const stickerStr = Array.from(msg.stickers.values())
+            .map((s) => `Sent sticker: "${s.name}"`)
+            .join(", ");
+          processedContent = processedContent.trim()
+            ? `${processedContent}\n${stickerStr}`
+            : stickerStr;
+        }
+
+        const isBotMessage = msg.author.bot && (botId && msg.author.id === botId);
+
+        const reactionResults = await Promise.all(
+          Array.from(msg.reactions.cache.values()).map(async (reaction) => {
+            try {
+              const users = await reaction.users.fetch();
+              return {
+                emoji: reaction.emoji.toString(),
+                userIds: users.map((u) => u.id),
+                userNames: users.map((u) => u.displayName || u.username),
+              };
+            } catch {
+              return null;
+            }
+          })
+        );
+        const reactions = reactionResults.filter((r): r is ReactionInfo => r !== null);
+
+        return {
+          id: msg.id,
+          role: isBotMessage ? "assistant" : "user",
+          content: processedContent,
+          createdAt: msg.createdAt,
+          member: msg.author,
+          reactions: reactions.length > 0 ? reactions : undefined,
+        } as HistoryMessage;
+      })
+    );
+
+    return processed.filter((m): m is HistoryMessage => m !== null);
   } catch (error) {
     log.error("Error fetching message history:", error);
+    return [];
   }
-
-  return messages;
 }
 
 /**
@@ -179,27 +183,18 @@ function isImageAttachment(attachment: any): boolean {
  * Extracts image attachments from a Discord message and encodes them to base64
  */
 export async function extractImagesFromMessage(message: Message): Promise<ImageAttachment[]> {
-  const images: ImageAttachment[] = [];
-
-  for (const attachment of Array.from(message.attachments.values())) {
-    if (isImageAttachment(attachment)) {
-      const url = attachment.url;
-      const contentType = attachment.contentType;
-
-      if (url && contentType) {
+  // same serial for-await pattern as above - parallel downloads instead
+  const results = await Promise.all(
+    Array.from(message.attachments.values())
+      .filter(isImageAttachment)
+      .map(async (attachment) => {
+        const { url, contentType } = attachment;
+        if (!url || !contentType) return null;
         const base64 = await downloadAndEncodeImage(url, contentType);
-        if (base64) {
-          images.push({
-            url: url,
-            contentType: contentType,
-            base64: base64,
-          });
-        }
-      }
-    }
-  }
-
-  return images;
+        return base64 ? { url, contentType, base64 } : null;
+      })
+  );
+  return results.filter((img): img is ImageAttachment => img !== null);
 }
 
 /**
@@ -245,21 +240,16 @@ export async function fetchReferencedMessage(message: Message): Promise<Referenc
  * Used for vision context so the bot can "see" stickers sent by users.
  */
 export async function extractStickerImagesFromMessage(message: Message): Promise<ImageAttachment[]> {
-  const images: ImageAttachment[] = [];
-
-  for (const sticker of message.stickers.values()) {
-    // Skip LOTTIE stickers (format 3) — they're JSON animations, not raster images
-    if (sticker.format === 3) continue;
-
-    const url = sticker.url;
-    if (!url) continue;
-
-    const contentType = sticker.format === 2 ? "image/apng" : "image/png";
-    const base64 = await downloadAndEncodeImage(url, contentType);
-    if (base64) {
-      images.push({ url, contentType, base64 });
-    }
-  }
-
-  return images;
+  // same
+  const results = await Promise.all(
+    Array.from(message.stickers.values())
+      .filter((s) => s.format !== 3) // format 3 is LOTTIE - JSON animation, not raster
+      .map(async (sticker) => {
+        if (!sticker.url) return null;
+        const contentType = sticker.format === 2 ? "image/apng" : "image/png";
+        const base64 = await downloadAndEncodeImage(sticker.url, contentType);
+        return base64 ? { url: sticker.url, contentType, base64 } : null;
+      })
+  );
+  return results.filter((img): img is ImageAttachment => img !== null);
 }

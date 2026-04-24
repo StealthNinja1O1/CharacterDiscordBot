@@ -77,6 +77,7 @@ export async function buildAIRequest({
   }
 
   // Add conversation history
+  let pendingAssistantReactions: string | null = null;
   messages.forEach((msg, index) => {
     let finaltext = msg.content;
     if (!msg.content || msg.content.trim() === "") return; // Skip empty messages
@@ -85,8 +86,24 @@ export async function buildAIRequest({
     if (index === lastUserMessageIndex && replyContext) {
       finaltext = `${replyContext}\n\n${finaltext}`;
     }
-    if (msg.role == "user" && discordConfig.addTimestamps)
-      finaltext += `\n[${msg?.createdAt?.toISOString() || "unknown time"}]`;
+
+    if (msg.role == "user") {
+      if (discordConfig.addTimestamps)
+        finaltext += `\n[${msg?.createdAt?.toISOString() || "unknown time"}]`;
+
+      // Prepend reactions from the previous assistant message above this user message
+      if (pendingAssistantReactions) {
+        finaltext = `[Reactions on ${charName}'s previous message: ${pendingAssistantReactions}]\n${finaltext}`;
+        pendingAssistantReactions = null;
+      }
+
+      // Append reactions on this user message below it
+      if (msg.reactions && msg.reactions.length > 0) {
+        const reactionStr = msg.reactions.map((r) => `${r.emoji} by ${r.userNames.join(", ")}`).join("; ");
+        finaltext += `\n[Reactions: ${reactionStr}]`;
+      }
+    }
+
     // ensure assistant messages are valid json, so it keeps using this format.
     // Reconstruct bot reactions from the preceding user message into the commands array.
     if (msg.role == "assistant") {
@@ -103,12 +120,11 @@ export async function buildAIRequest({
 
       finaltext = JSON.stringify({ reply: finaltext, commands: reconstructedCommands });
 
-      // Append reactions received on this bot message (from other users)
+      // Save reactions received on this bot message to show above the next user message
       if (msg.reactions && msg.reactions.length > 0) {
         const otherReactions = msg.reactions.filter((r) => !r.userIds.includes(guildInfo?.botId || ""));
         if (otherReactions.length > 0) {
-          const reactionStr = otherReactions.map((r) => `${r.emoji} by ${r.userNames.join(", ")}`).join("; ");
-          finaltext += ` [Message reactions: ${reactionStr}]`;
+          pendingAssistantReactions = otherReactions.map((r) => `${r.emoji} by ${r.userNames.join(", ")}`).join("; ");
         }
       }
     }

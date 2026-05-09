@@ -134,14 +134,6 @@ export function formatMessagesForAI(
 
     if (msg.role === "user") content = `${userDisplayName} (${username} - ${userId}): ${content}`;
 
-    // Append reactions inline
-    if (msg.reactions && msg.reactions.length > 0) {
-      const reactionStr = msg.reactions
-        .map((r) => `${r.emoji} by ${r.userNames.join(", ")}`)
-        .join("; ");
-      content += ` [Reactions: ${reactionStr}]`;
-    }
-
     return {
       role: msg.role,
       content: content,
@@ -161,6 +153,8 @@ async function downloadAndEncodeImage(url: string, contentType: string): Promise
       log.warn(`Failed to download image from ${url}: ${response.statusText}`);
       return null;
     }
+
+    // todo, add compression to like 2MP here to save tokens and it up
 
     const buffer = await response.arrayBuffer();
     const base64 = Buffer.from(buffer).toString("base64");

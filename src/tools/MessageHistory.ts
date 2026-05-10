@@ -1,6 +1,12 @@
 import { Message, User } from "discord.js";
+import sharp from "sharp";
 import { ImageAttachment, ReactionInfo } from "../models.js";
 import { log } from "../utils/logger.js";
+
+/** Max dimension for compressed images (fits within this box, aspect ratio preserved). ~2MP max. */
+const MAX_IMAGE_DIMENSION = 1600;
+/** JPEG quality for compressed output */
+const JPEG_QUALITY = 80;
 
 export interface HistoryMessage {
   id: string;
@@ -144,9 +150,12 @@ export function formatMessagesForAI(
 }
 
 /**
- * Downloads an image from a URL and converts it to base64
+ * Downloads an image from a URL, compresses it to JPEG, and converts to base64.
+ * Images are downscaled to fit within MAX_IMAGE_DIMENSION×MAX_IMAGE_DIMENSION (aspect preserved)
+ * and re-encoded as JPEG at JPEG_QUALITY to minimize token usage.
+ * Falls back to the original uncompressed image if sharp processing fails.
  */
-async function downloadAndEncodeImage(url: string, contentType: string): Promise<string | null> {
+async function downloadAndEncodeImage(url: string, _contentType: string): Promise<string | null> {
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -154,11 +163,26 @@ async function downloadAndEncodeImage(url: string, contentType: string): Promise
       return null;
     }
 
-    // todo, add compression to like 2MP here to save tokens and it up
+    const originalBuffer = Buffer.from(await response.arrayBuffer());
 
-    const buffer = await response.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString("base64");
-    return `data:${contentType};base64,${base64}`;
+    try {
+      const compressedBuffer = await sharp(originalBuffer)
+        .resize(MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION, { fit: "inside", withoutEnlargement: true })
+        .flatten({ background: { r: 255, g: 255, b: 255 } })
+        .jpeg({ quality: JPEG_QUALITY })
+        .toBuffer();
+
+      const originalKB = (originalBuffer.length / 1024).toFixed(0);
+      const compressedKB = (compressedBuffer.length / 1024).toFixed(0);
+      log.debug(`Image compressed: ${originalKB}KB → ${compressedKB}KB`);
+
+      const base64 = compressedBuffer.toString("base64");
+      return `data:image/jpeg;base64,${base64}`;
+    } catch (compressionError) {
+      log.warn(`Image compression failed for ${url}, using original: ${compressionError}`);
+      const base64 = originalBuffer.toString("base64");
+      return `data:${_contentType};base64,${base64}`;
+    }
   } catch (error) {
     log.error(`Error encoding image from ${url}:`, error);
     return null;
@@ -185,7 +209,7 @@ export async function extractImagesFromMessage(message: Message): Promise<ImageA
         const { url, contentType } = attachment;
         if (!url || !contentType) return null;
         const base64 = await downloadAndEncodeImage(url, contentType);
-        return base64 ? { url, contentType, base64 } : null;
+        return base64 ? { url, contentType: "image/jpeg", base64 } : null;
       })
   );
   return results.filter((img): img is ImageAttachment => img !== null);
@@ -242,7 +266,7 @@ export async function extractStickerImagesFromMessage(message: Message): Promise
         if (!sticker.url) return null;
         const contentType = sticker.format === 2 ? "image/apng" : "image/png";
         const base64 = await downloadAndEncodeImage(sticker.url, contentType);
-        return base64 ? { url: sticker.url, contentType, base64 } : null;
+        return base64 ? { url: sticker.url, contentType: "image/jpeg", base64 } : null;
       })
   );
   return results.filter((img): img is ImageAttachment => img !== null);

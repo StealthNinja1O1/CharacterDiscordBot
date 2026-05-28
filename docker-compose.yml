@@ -23,5 +23,9 @@ services:
       - REPLY_TO_MENTIONS=true
       - MENTION_TRIGGER_ALLOWED_USERS=1402920090344755323,1234567890
       - ALLOW_LOREBOOK_EDITING=false
+      - ENABLE_VISION=true
+      - VISION_MODEL= # Optional separate vision model. Leave empty to use main LLM's native vision
+      - VISION_MODEL_API_KEY= # Optional, defaults to LLM_API_KEY
+      - VISION_MODEL_BASE_URL= # Optional, defaults to LLM_BASE_URL
     volumes:
       - ./character.json:/home/node/app/character.json

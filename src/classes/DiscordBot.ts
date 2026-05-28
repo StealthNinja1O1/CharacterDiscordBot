@@ -5,9 +5,14 @@ import { readFileSync, existsSync } from "fs";
 import { executeBotCommands } from "../utils/botCommandHandler.js";
 import { parseAIResponse } from "../utils/responseParser.js";
 import { generateAIResponse } from "../tools/prompt.js";
-import { fetchReferencedMessage, extractImagesFromMessage, extractStickerImagesFromMessage } from "../tools/MessageHistory.js";
+import {
+  fetchReferencedMessage,
+  extractImagesFromMessage,
+  extractStickerImagesFromMessage,
+} from "../tools/MessageHistory.js";
 import { loadChatMemoryBook, saveChatMemoryBook, upsertChatMemoryEntry } from "../tools/chatMemoryBook.js";
 import CommandHandler from "../commands/CommandHandler.js";
+import { MessageQueue } from "./MessageQueue.js";
 import { log } from "../utils/logger.js";
 
 export interface DiscordBotOptions {
@@ -31,6 +36,7 @@ export class DiscordBot {
   private messageCounter = 0;
   private isBusy = new Map<string, boolean>();
   private lastResponseTimestamp = new Map<string, number>();
+  private messageQueue = new MessageQueue();
   public botDiscordId: string | null = null;
   private chatMemoryBook;
 
@@ -95,10 +101,21 @@ export class DiscordBot {
       this.botDiscordId = this.client.user?.id || null;
       log.info(`Logged in as ${this.client.user?.tag}`);
       log.info(`Character: ${this.character.name}`);
-      log.info(`Channels: ${this.discordConfig.channelId.length > 0 ? this.discordConfig.channelId.join(", ") : "all"}`);
+      log.info(
+        `Channels: ${this.discordConfig.channelId.length > 0 ? this.discordConfig.channelId.join(", ") : "all"}`,
+      );
       log.info(`Random response rate: 1 in ${this.discordConfig.randomResponseRate}`);
-      log.info(`Vision: ${this.discordConfig.enableVision ? "enabled" : "disabled"} | Memory book editing: ${this.discordConfig.allowLorebookEditing ? "enabled" : "disabled"}`);
-      log.info(`Model: ${DEFAULT_PRESET.model} | Max tokens: ${this.discordConfig.maxContextTokens} | History: ${this.discordConfig.maxHistoryMessages} messages`);
+      const visionInfo = this.discordConfig.enableVision
+        ? this.discordConfig.visionModel
+          ? `enabled (separate model: ${this.discordConfig.visionModel})`
+          : "enabled (native)"
+        : "disabled";
+      log.info(
+        `Vision: ${visionInfo} | Memory book editing: ${this.discordConfig.allowLorebookEditing ? "enabled" : "disabled"}`,
+      );
+      log.info(
+        `Model: ${DEFAULT_PRESET.model} | Max tokens: ${this.discordConfig.maxContextTokens} | History: ${this.discordConfig.maxHistoryMessages} messages`,
+      );
       log.info(`Memory book: ${this.chatMemoryBook.entries.length} entries loaded`);
 
       await this.commandHandler.registerCommands(this.client.user!.id);
@@ -113,9 +130,14 @@ export class DiscordBot {
     });
   }
 
-  private shouldRespond(message: Message): boolean {
+  /**
+   * Determines whether the bot should respond to a message.
+   * @param message The Discord message to evaluate
+   * @param ignoreBusy If true, skip the busy-channel check (used for queueing)
+   */
+  private shouldRespond(message: Message, ignoreBusy = false): boolean {
     const channelid = message.channelId;
-    if (this.isBusy.get(channelid)) return false;
+    if (!ignoreBusy && this.isBusy.get(channelid)) return false;
     if (!this.runtimeEnabled) return false;
 
     const whiteListedUser = this.discordConfig.mentionTriggerAllowedUserIds.includes(message.author.id);
@@ -163,9 +185,32 @@ export class DiscordBot {
     return false;
   }
 
+  /**
+   * Entry point for all incoming messages. Decides whether to respond immediately,
+   * queue the message, or ignore it entirely.
+   */
   private async handleMessage(message: Message) {
-    if (!this.shouldRespond(message)) return;
-    this.isBusy.set(message.channelId, true);
+    const channelId = message.channelId;
+
+    // If we can respond right now, process immediately
+    if (this.shouldRespond(message)) {
+      await this.processMessage(message);
+      return;
+    }
+
+    // If the bot is busy in this channel but the message would otherwise trigger a response, queue it
+    if (this.isBusy.get(channelId) && this.shouldRespond(message, true)) {
+      this.messageQueue.enqueue(channelId, message);
+    }
+  }
+
+  /**
+   * Processes a single message: generates a response and sends it.
+   * After processing, drains the queue for that channel.
+   */
+  private async processMessage(message: Message) {
+    const channelId = message.channelId;
+    this.isBusy.set(channelId, true);
 
     let typingInterval: NodeJS.Timeout | null = null;
 
@@ -203,7 +248,7 @@ export class DiscordBot {
       );
       log.debug(`Raw LLM response: ${response}`);
       const parsed = parseAIResponse(response);
-      let reply = parsed.reply;
+      const reply = parsed.reply;
 
       // Execute bot commands if present
       if (parsed.commands && parsed.commands.length > 0) {
@@ -213,7 +258,9 @@ export class DiscordBot {
           characterFilePath: this.discordConfig.characterFilePath,
           chatMemoryBook: this.chatMemoryBook,
           chatMemoryBookPath: this.discordConfig.chatMemoryBookPath,
-          onChatMemoryUpdate: (updated) => { this.chatMemoryBook = updated; },
+          onChatMemoryUpdate: (updated) => {
+            this.chatMemoryBook = updated;
+          },
         });
         for (const result of commandResults) {
           if (result.success) log.info(`Command: ${result.message}`);
@@ -231,11 +278,42 @@ export class DiscordBot {
       if (typingInterval) clearInterval(typingInterval);
 
       log.error("Error handling message:", error);
-      await message.reply("*Something went wrong... The static consumes my words.*");
+      try {
+        await message.reply("*Something went wrong... The static consumes my words.*");
+      } catch (replyError) {
+        log.error("Failed to send error reply:", replyError);
+      }
     } finally {
-      this.isBusy.set(message.channelId, false);
-      this.lastResponseTimestamp.set(message.channelId, Date.now());
+      this.isBusy.set(channelId, false);
+      this.lastResponseTimestamp.set(channelId, Date.now());
+
+      // Drain the queue for this channel
+      await this.processQueue(channelId);
     }
+  }
+
+  /**
+   * Processes queued messages for a channel one at a time.
+   * Re-validates each message before processing (handles stale messages, rate limits, etc.).
+   */
+  private async processQueue(channelId: string) {
+    while (this.messageQueue.hasPending(channelId)) {
+      const nextMessage = this.messageQueue.dequeue(channelId);
+      if (!nextMessage) break;
+
+      if (!this.shouldRespond(nextMessage)) {
+        log.debug(`Skipping queued message from ${nextMessage.author.username} — no longer meets response criteria`);
+        continue;
+      }
+
+      log.debug(
+        `Processing queued message from ${nextMessage.author.username} in channel ${channelId} (remaining: ${this.messageQueue.size(channelId)})`,
+      );
+      await this.processMessage(nextMessage);
+      return;
+    }
+
+    if (!this.messageQueue.hasPending(channelId)) log.debug(`Queue drained for channel ${channelId}`);
   }
 
   // Public getters/setters for command handler

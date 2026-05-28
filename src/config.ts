@@ -15,6 +15,9 @@ export interface DiscordConfig {
   mentionTriggerAllowedUserIds: string[];
   addNothink: boolean;
   enableVision: boolean;
+  visionModel: string;
+  visionModelApiKey: string;
+  visionModelBaseUrl: string;
   allowRenaming: boolean;
   enableUserStatus: boolean;
   chatMemoryBookPath: string;
@@ -37,6 +40,9 @@ export const discordConfig: DiscordConfig = {
   mentionTriggerAllowedUserIds: (process.env.MENTION_TRIGGER_ALLOWED_USERS || "").split(",").filter(Boolean),
   addNothink: process.env.ADD_NOTHINK === "true" || false,
   enableVision: process.env.ENABLE_VISION === "true" || false,
+  visionModel: process.env.VISION_MODEL || "",
+  visionModelApiKey: process.env.VISION_MODEL_API_KEY || "",
+  visionModelBaseUrl: process.env.VISION_MODEL_BASE_URL || "",
   allowRenaming: process.env.ALLOW_RENAMING === "true" || false,
   enableUserStatus: process.env.ENABLE_USER_STATUS === "true" || false,
   chatMemoryBookPath: process.env.CHAT_MEMORY_BOOK_PATH || "./chatMemory.json",

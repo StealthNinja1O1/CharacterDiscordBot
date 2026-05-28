@@ -4,6 +4,7 @@ import { ChatMemoryBook } from "./chatMemoryBook.js";
 import { processLorebook } from "./lorebook.js";
 import { parseLorebook } from "./normalizeLorebook.js";
 import { generateResponse } from "../api/llm.js";
+import { describeImages, formatImageDescriptions } from "../api/vision.js";
 import { fetchMessageHistory, formatMessagesForAI } from "./MessageHistory.js";
 import { countTokens } from "../utils/tokenCounter.js";
 import { log } from "../utils/logger.js";
@@ -99,7 +100,10 @@ export async function buildAIRequest({
 
       // Append reactions on this user message below it
       if (msg.reactions && msg.reactions.length > 0) {
-        const reactionStr = msg.reactions.map((r) => `${r.emoji} by ${r.userNames.join(", ")}`).join("; ");
+        const reactionStr = msg.reactions.map((r) => {
+          const names = r.userNames.filter(Boolean).join(", ");
+          return names ? `${r.emoji} by ${names}` : r.emoji;
+        }).join(", ");
         finaltext += `\n[Reactions: ${reactionStr}]`;
       }
     }
@@ -109,23 +113,13 @@ export async function buildAIRequest({
     if (msg.role == "assistant") {
       const prevMsg = index > 0 ? messages[index - 1] : null;
       const reconstructedCommands: Array<{ name: string; args: Record<string, string> }> = [];
-
-      if (prevMsg?.reactions && guildInfo?.botId) {
-        for (const reaction of prevMsg.reactions) {
-          if (reaction.userIds.includes(guildInfo.botId)) {
-            reconstructedCommands.push({ name: "react", args: { emoji: reaction.emoji } });
-          }
-        }
-      }
-
       finaltext = JSON.stringify({ reply: finaltext, commands: reconstructedCommands });
-
-      // Save reactions received on this bot message to show above the next user message
+      // Show all reactions on bot messages as context for the next user message
       if (msg.reactions && msg.reactions.length > 0) {
-        const otherReactions = msg.reactions.filter((r) => !r.userIds.includes(guildInfo?.botId || ""));
-        if (otherReactions.length > 0) {
-          pendingAssistantReactions = otherReactions.map((r) => `${r.emoji} by ${r.userNames.join(", ")}`).join("; ");
-        }
+        pendingAssistantReactions = msg.reactions.map((r) => {
+          const names = r.userNames.filter(Boolean).join(", ");
+          return names ? `${r.emoji} by ${names}` : r.emoji;
+        }).join(", ");
       }
     }
     aiMessages.push({
@@ -367,7 +361,40 @@ export async function generateAIResponse(
 
     log.debug(`Sending ${trimmedMessages.length} messages to LLM (${model})`);
 
-    const response = await generateResponse(model, messages, temperature, config.addNothink, images);
+    // Vision branching: use separate vision model or pass images directly to main LLM
+    let finalImages: ImageAttachment[] = images;
+    let imageDescriptionText = "";
+
+    if (config.enableVision && images.length > 0 && config.visionModel) {
+      try {
+        log.debug(`Describing ${images.length} image(s) with vision model: ${config.visionModel}`);
+        const descriptions = await describeImages(images, config);
+        imageDescriptionText = formatImageDescriptions(descriptions);
+
+        let lastUserIdx = -1;
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === "user") {
+            lastUserIdx = i;
+            break;
+          }
+        }
+        if (lastUserIdx !== -1) {
+          const existingContent = messages[lastUserIdx].content;
+          messages[lastUserIdx] = {
+            ...messages[lastUserIdx],
+            content: `${imageDescriptionText}\n\n${existingContent}`,
+          };
+        }
+
+        // Don't pass images to main LLM as its already done
+        finalImages = [];
+      } catch (error) {
+        log.warn("Vision model failed, falling back to native vision if available:", error);
+        // images will be passed directly to main LLM if it supports it
+      }
+    }
+
+    const response = await generateResponse(model, messages, temperature, config.addNothink, finalImages);
 
     return response;
   } catch (error) {

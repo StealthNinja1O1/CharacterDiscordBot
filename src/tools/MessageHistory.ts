@@ -92,21 +92,11 @@ export async function fetchMessageHistory(message: Message, limit: number, botId
 
         const isBotMessage = msg.author.bot && (botId && msg.author.id === botId);
 
-        const reactionResults = await Promise.all(
-          Array.from(msg.reactions.cache.values()).map(async (reaction) => {
-            try {
-              const users = await reaction.users.fetch();
-              return {
-                emoji: reaction.emoji.toString(),
-                userIds: users.map((u) => u.id),
-                userNames: users.map((u) => u.displayName || u.username),
-              };
-            } catch {
-              return null;
-            }
-          })
-        );
-        const reactions = reactionResults.filter((r): r is ReactionInfo => r !== null);
+        const reactions: ReactionInfo[] = Array.from(msg.reactions.cache.values()).map((reaction) => ({
+          emoji: reaction.emoji.toString(),
+          userIds: [],
+          userNames: [],
+        }));
 
         return {
           id: msg.id,
@@ -258,7 +248,6 @@ export async function fetchReferencedMessage(message: Message): Promise<Referenc
  * Used for vision context so the bot can "see" stickers sent by users.
  */
 export async function extractStickerImagesFromMessage(message: Message): Promise<ImageAttachment[]> {
-  // same
   const results = await Promise.all(
     Array.from(message.stickers.values())
       .filter((s) => s.format !== 3) // format 3 is LOTTIE - JSON animation, not raster

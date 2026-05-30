@@ -20,9 +20,9 @@
   "license": "ISC",
   "dependencies": {
     "discord.js": "^14.25.1",
-    "dotenv": "^16.3.1",
     "gpt-tokenizer": "^3.2.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "smol-toml": "^1.6.1"
   },
   "devDependencies": {
     "@types/node": "^20.10.5",

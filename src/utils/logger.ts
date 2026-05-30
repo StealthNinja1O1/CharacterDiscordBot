@@ -6,7 +6,9 @@
 const LEVELS = ["DEBUG", "INFO", "WARN", "ERROR"] as const;
 type LogLevel = (typeof LEVELS)[number];
 
-const minLevel: LogLevel = (process.env.LOG_LEVEL?.toUpperCase() as LogLevel) || "INFO";
+import { behaviorConfig } from "../config.js";
+
+const minLevel: LogLevel = behaviorConfig.logLevel?.toUpperCase() as LogLevel || "INFO";
 
 function shouldLog(level: LogLevel): boolean {
   return LEVELS.indexOf(level) >= LEVELS.indexOf(minLevel);

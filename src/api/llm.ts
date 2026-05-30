@@ -1,10 +1,5 @@
-const LLM_API_KEY = process.env.LLM_API_KEY;
-const LLM_BASE_URL = process.env.LLM_BASE_URL;
-if (!LLM_API_KEY) throw new Error("LLM API key (LLM_API_KEY) is not configured in .env file");
-if (!LLM_BASE_URL) throw new Error("LLM base URL (LLM_BASE_URL) is not configured in .env file");
-
 import { ImageAttachment } from "../models.js";
-import { discordConfig } from "../config.js";
+import { config, llmConfig } from "../config.js";
 import { log } from "../utils/logger.js";
 
 interface ChatMessage {
@@ -44,7 +39,7 @@ export async function generateResponse(
   // Build multimodal messages if vision is enabled and images are present
   let finalMessages = messages;
 
-  if (discordConfig.enableVision && images.length > 0) {
+  if (config.vision.enabled && images.length > 0) {
     finalMessages = messages.map((msg) => {
       // Only modify user messages; keep system and assistant as-is
       if (msg.role !== "user") {
@@ -92,11 +87,11 @@ export async function generateResponse(
 
   try {
     const startTime = Date.now();
-    const response = await fetch(`${LLM_BASE_URL}/chat/completions`, {
+    const response = await fetch(`${llmConfig.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${LLM_API_KEY}`,
+        Authorization: `Bearer ${llmConfig.apiKey}`,
       },
       body: JSON.stringify(requestBody),
     });

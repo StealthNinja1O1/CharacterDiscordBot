@@ -4,15 +4,99 @@ import { writeFileSync, readFileSync } from "fs";
 import { discordConfig } from "../config.js";
 import { ChatMemoryBook, upsertChatMemoryEntry, saveChatMemoryBook } from "../tools/chatMemoryBook.js";
 import { log } from "./logger.js";
+import { generateImage } from "../api/comfyui.js";
+import { AttachmentData } from "./ResponseContexts.js";
 
 interface CommandResult {
   success: boolean;
   message: string;
 }
 
+export interface AsyncCommandResult {
+  success: boolean;
+  message: string;
+  attachment?: AttachmentData;
+}
+
+/** Commands that require async execution and produce follow-up results */
+const ASYNC_COMMAND_NAMES = ["generateImage"];
+
 /**
- * Executes bot-facing commands from the AI response.
- * These commands allow the character to interact with Discord (react, rename, edit lorebook).
+ * Split commands into instant (execute synchronously before reply)
+ * and async (execute after reply, results sent as follow-up).
+ */
+export function splitCommands(commands: BotCommand[]) {
+  return {
+    instant: commands.filter((c) => !ASYNC_COMMAND_NAMES.includes(c.name)),
+    async: commands.filter((c) => ASYNC_COMMAND_NAMES.includes(c.name)),
+  };
+}
+
+export type CommandContext = {
+  message: Message;
+  character: Character;
+  characterFilePath?: string;
+  chatMemoryBook?: ChatMemoryBook;
+  chatMemoryBookPath?: string;
+  onChatMemoryUpdate?: (book: ChatMemoryBook) => void;
+};
+
+/**
+ * Executes instant bot-facing commands (react, rename, lorebook, sticker).
+ * These run synchronously before the text reply is sent.
+ */
+export async function executeInstantCommands(
+  commands: BotCommand[],
+  context: CommandContext,
+): Promise<CommandResult[]> {
+  const results: CommandResult[] = [];
+  const { message, character, characterFilePath, chatMemoryBook, chatMemoryBookPath, onChatMemoryUpdate } = context;
+
+  for (const cmd of commands) {
+    try {
+      const result = await executeCommand(cmd, message, character, characterFilePath, chatMemoryBook, chatMemoryBookPath, onChatMemoryUpdate);
+      results.push(result);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      results.push({ success: false, message: `Error executing ${cmd.name}: ${errorMsg}` });
+      log.error(`Error executing command ${cmd.name}:`, error);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Executes async bot-facing commands (generateImage).
+ * These run after the text reply is sent. Results produce attachments for follow-up.
+ */
+export async function executeAsyncCommands(
+  commands: BotCommand[],
+  _context: CommandContext,
+): Promise<AsyncCommandResult[]> {
+  const results: AsyncCommandResult[] = [];
+
+  for (const cmd of commands) {
+    try {
+      if (cmd.name === "generateImage") {
+        const result = await executeGenerateImage(cmd.args as any);
+        results.push(result);
+      } else {
+        results.push({ success: false, message: `Unknown async command: ${cmd.name}` });
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      results.push({ success: false, message: `Error executing ${cmd.name}: ${errorMsg}` });
+      log.error(`Error executing async command ${cmd.name}:`, error);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * @deprecated Use executeInstantCommands + executeAsyncCommands instead.
+ * Executes all bot-facing commands from the AI response (legacy).
  */
 export async function executeBotCommands(
   commands: BotCommand[],
@@ -266,6 +350,38 @@ async function executePostSticker(
     return {
       success: false,
       message: `Failed to send sticker: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * Generate an image using ComfyUI
+ * @param args.prompt - The image generation prompt
+ * @param args.orientation - Image orientation (portrait, square, landscape)
+ */
+async function executeGenerateImage(
+  args: { prompt: string; orientation?: "portrait" | "square" | "landscape" },
+): Promise<AsyncCommandResult> {
+  const { prompt, orientation = "square" } = args;
+
+  if (!prompt || typeof prompt !== "string") {
+    return { success: false, message: "Invalid prompt argument for generateImage" };
+  }
+
+  const validOrientations = ["portrait", "square", "landscape"];
+  const safeOrientation = validOrientations.includes(orientation) ? orientation : "square";
+
+  try {
+    const result = await generateImage(prompt, safeOrientation as "portrait" | "square" | "landscape");
+    return {
+      success: true,
+      message: `Image generated (${safeOrientation}): "${prompt.substring(0, 80)}..."`,
+      attachment: { buffer: result.buffer, name: result.filename },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: `Failed to generate image: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }

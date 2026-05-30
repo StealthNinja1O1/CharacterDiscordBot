@@ -7,25 +7,8 @@ services:
     restart: unless-stopped
     command: ["npm", "run", "start"]
     environment:
-      - LLM_API_KEY=
-      - LLM_BASE_URL=https://api.openai.com/v1
-      - LLM_MODEL=gpt-4o
-      - DISCORD_BOT_TOKEN=
-      - DISCORD_CHANNEL_ID=
-      - DISCORD_ALLOWED_USERS=1402920090344755323,1234567890
-      - RANDOM_RESPONSE_RATE=1 # Set to -1 to disable random responses
-      - MAX_HISTORY_MESSAGES=30
-      - MAX_CONTEXT_TOKENS=20000
-      - IGNORE_OTHER_BOTS=true
-      - TRIGGER_KEYWORDS=assistant,bot,helper,chatgpt
-      - ADD_TIMESTAMPS=true # Add timestamps to messages
-      - MIN_RESPONSE_INTERVAL_SECONDS=0
-      - REPLY_TO_MENTIONS=true
-      - MENTION_TRIGGER_ALLOWED_USERS=1402920090344755323,1234567890
-      - ALLOW_LOREBOOK_EDITING=false
-      - ENABLE_VISION=true
-      - VISION_MODEL= # Optional separate vision model. Leave empty to use main LLM's native vision
-      - VISION_MODEL_API_KEY= # Optional, defaults to LLM_API_KEY
-      - VISION_MODEL_BASE_URL= # Optional, defaults to LLM_BASE_URL
+      - CONFIG_PATH=/home/node/app/config.toml
     volumes:
+      - ./config.toml:/home/node/app/config.toml
       - ./character.json:/home/node/app/character.json
+      - ./workflow.json:/home/node/app/workflow.json

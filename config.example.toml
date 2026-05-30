@@ -1,0 +1,58 @@
+# ============================================================
+# Character Discord Bot - Configuration
+# Copy this file to config.toml and edit the values.
+# ============================================================
+
+# --- LLM API Configuration ---
+[llm]
+api_key = ""                                    # Required. API key for your LLM provider
+base_url = "https://api.openai.com/v1"          # Base URL for the chat completions endpoint
+model = "gpt-4o"                                # Model name to use
+temperature = 0.7                               # Model temperature (0-2)
+
+# --- Discord Bot Configuration ---
+[discord]
+bot_token = ""                                  # Required. Your Discord bot token
+channel_ids = []                                # Channel IDs to respond in (empty = all channels)
+allowed_user_ids = []                           # User IDs allowed to use admin slash commands
+random_response_rate = 50                       # Respond randomly to 1 in X messages (-1 to disable)
+max_history_messages = 30                       # Number of recent messages to fetch for context
+max_context_tokens = 20000                      # Maximum tokens for context (includes system prompt)
+ignore_other_bots = true                        # Whether to ignore messages from other bots
+trigger_keywords = []                           # Additional keywords that trigger responses
+reply_to_mentions = true                        # If false, bot won't reply to mentions (unless whitelisted)
+mention_trigger_allowed_user_ids = []           # User IDs that always trigger mention/keyword replies
+add_timestamps = true                           # Add timestamps to messages in context
+min_response_interval_seconds = 0               # Minimum seconds between responses in the same channel
+add_nothink = false                             # Adds disable-thinking tag for models that support it
+enable_user_status = false                      # Show user Discord status/activities in context (requires Presence Intent)
+allow_renaming = false                          # Allow the bot to rename itself and others via commands
+
+# --- External Vision Model ---
+[vision]
+enabled = false                                 # Enable image vision support for multimodal models
+model = "gpt-4o-mini"                          # Any OpenAI-compatible vision model
+api_key = ""                                    # Optional, falls back to llm.api_key
+base_url = ""                                   # Optional, falls back to llm.base_url
+
+# --- Behavior Settings ---
+[behavior]
+allow_lorebook_editing = false                  # Allow the character to create/update memory book entries
+character_file_path = "./character.json"        # Path to the character card JSON file
+chat_memory_book_path = "./chatMemory.json"     # Path to the dynamic memory book (auto-created)
+log_level = "INFO"                              # Log level: DEBUG, INFO, WARN, ERROR
+
+# --- ComfyUI Image Generation ---
+[comfyui]
+enabled = false                                 # Enable image generation via ComfyUI
+base_url = ""                                   # ComfyUI server URL (e.g. "http://127.0.0.1:8188")
+workflow_path = "./workflow.json"               # Path to the ComfyUI workflow JSON template
+timeout_seconds = 120                           # Maximum time to wait for image generation
+poll_interval_ms = 2000                         # How often to poll for completion (in milliseconds)
+randomize_seeds = true                          # Randomize all seed inputs in the workflow for each generation
+strip_metadata = true                           # Strip prompt/workflow metadata from the generated PNG
+
+[comfyui.resolutions]
+square = [1280, 1280]
+portrait = [1008, 1280]
+landscape = [1280, 1008]

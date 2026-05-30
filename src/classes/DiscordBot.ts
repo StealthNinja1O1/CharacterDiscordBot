@@ -1,8 +1,8 @@
-import { Client, GatewayIntentBits, Events, Message } from "discord.js";
+import { Client, GatewayIntentBits, Events, Message, AttachmentBuilder } from "discord.js";
 import { DiscordConfig, DEFAULT_PRESET } from "../config.js";
 import { Character } from "../models.js";
 import { readFileSync, existsSync } from "fs";
-import { executeBotCommands } from "../utils/botCommandHandler.js";
+import { executeBotCommands, executeInstantCommands, executeAsyncCommands, splitCommands } from "../utils/botCommandHandler.js";
 import { parseAIResponse } from "../utils/responseParser.js";
 import { generateAIResponse } from "../tools/prompt.js";
 import {
@@ -14,6 +14,7 @@ import { loadChatMemoryBook, saveChatMemoryBook, upsertChatMemoryEntry } from ".
 import CommandHandler from "../commands/CommandHandler.js";
 import { MessageQueue } from "./MessageQueue.js";
 import { log } from "../utils/logger.js";
+import { MessageResponseContext } from "../utils/ResponseContexts.js";
 
 export interface DiscordBotOptions {
   discordConfig: DiscordConfig;
@@ -249,10 +250,15 @@ export class DiscordBot {
       log.debug(`Raw LLM response: ${response}`);
       const parsed = parseAIResponse(response);
       const reply = parsed.reply;
+      const ctx = new MessageResponseContext(message);
 
-      // Execute bot commands if present
-      if (parsed.commands && parsed.commands.length > 0) {
-        const commandResults = await executeBotCommands(parsed.commands, {
+      // Split commands into instant and async
+      const allCommands = parsed.commands || [];
+      const { instant, async: asyncCmds } = splitCommands(allCommands);
+
+      // 1. Execute instant commands (react, rename, lorebook, sticker)
+      if (instant.length > 0) {
+        const instantResults = await executeInstantCommands(instant, {
           message,
           character: this.character,
           characterFilePath: this.discordConfig.characterFilePath,
@@ -262,18 +268,44 @@ export class DiscordBot {
             this.chatMemoryBook = updated;
           },
         });
-        for (const result of commandResults) {
+        for (const result of instantResults) {
           if (result.success) log.info(`Command: ${result.message}`);
           else log.warn(`Command failed: ${result.message}`);
         }
       }
 
-      if (typingInterval) clearInterval(typingInterval);
+      // 2. Send text reply immediately
       if (reply && reply.trim()) {
-        // Split long messages if needed (Discord has a 2000 character limit)
-        const chunks = reply.match(/[\s\S]{1,2000}/g) || [];
-        for (const chunk of chunks) await message.reply(chunk);
+        await ctx.sendReply(reply);
       }
+
+      // 3. Execute async commands (generateImage) — typing continues during this
+      if (asyncCmds.length > 0) {
+        const asyncResults = await executeAsyncCommands(asyncCmds, {
+          message,
+          character: this.character,
+          characterFilePath: this.discordConfig.characterFilePath,
+          chatMemoryBook: this.chatMemoryBook,
+          chatMemoryBookPath: this.discordConfig.chatMemoryBookPath,
+          onChatMemoryUpdate: (updated) => {
+            this.chatMemoryBook = updated;
+          },
+        });
+        for (const result of asyncResults) {
+          if (result.success && result.attachment) {
+            const file = new AttachmentBuilder(result.attachment.buffer, { name: result.attachment.name });
+            await ctx.sendFollowUp("", [file]);
+            log.info(`Async command: ${result.message}`);
+          } else if (result.success) {
+            log.info(`Async command: ${result.message}`);
+          } else {
+            await ctx.sendFollowUp("*[The static interfered with the image generation...]*");
+            log.warn(`Async command failed: ${result.message}`);
+          }
+        }
+      }
+
+      if (typingInterval) clearInterval(typingInterval);
     } catch (error) {
       if (typingInterval) clearInterval(typingInterval);
 

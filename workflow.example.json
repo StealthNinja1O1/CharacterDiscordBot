@@ -1,0 +1,915 @@
+{
+  "5": {
+    "inputs": {
+      "model_name": "segm/person_yolov8m-seg.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "6": {
+    "inputs": {
+      "model_name": "sam_vit_b_01ec64.pth",
+      "device_mode": "AUTO"
+    },
+    "class_type": "SAMLoader",
+    "_meta": {
+      "title": "SAMLoader (Impact)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "model_name": "bbox/face_yolov8m.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "8": {
+    "inputs": {
+      "model_name": "sam_vit_b_01ec64.pth",
+      "device_mode": "AUTO"
+    },
+    "class_type": "SAMLoader",
+    "_meta": {
+      "title": "SAMLoader (Impact)"
+    }
+  },
+  "10": {
+    "inputs": {
+      "model_name": "sam_vit_b_01ec64.pth",
+      "device_mode": "AUTO"
+    },
+    "class_type": "SAMLoader",
+    "_meta": {
+      "title": "SAMLoader (Impact)"
+    }
+  },
+  "11": {
+    "inputs": {
+      "model_name": "bbox/Eyeful_v2-Paired.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "13": {
+    "inputs": {
+      "model_name": "bbox/Eyeful_v2-Paired.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "15": {
+    "inputs": {
+      "model_name": "sam_vit_b_01ec64.pth",
+      "device_mode": "AUTO"
+    },
+    "class_type": "SAMLoader",
+    "_meta": {
+      "title": "SAMLoader (Impact)"
+    }
+  },
+  "17": {
+    "inputs": {
+      "model_name": "segm/person_yolov8m-seg.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "18": {
+    "inputs": {
+      "model_name": "bbox/hand_yolov8s.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "19": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 1187,
+      "steps": 15,
+      "cfg": 3,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "sgm_uniform",
+      "denoise": 0.3,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 10,
+      "bbox_crop_factor": 3,
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False",
+      "drop_size": 10,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "image": [
+        "45",
+        0
+      ],
+      "model": [
+        "52",
+        1
+      ],
+      "clip": [
+        "52",
+        2
+      ],
+      "vae": [
+        "52",
+        3
+      ],
+      "positive": [
+        "52",
+        4
+      ],
+      "negative": [
+        "52",
+        5
+      ],
+      "bbox_detector": [
+        "7",
+        0
+      ],
+      "sam_model_opt": [
+        "6",
+        0
+      ],
+      "segm_detector_opt": [
+        "5",
+        1
+      ]
+    },
+    "class_type": "FaceDetailer",
+    "_meta": {
+      "title": "FaceDetailer"
+    }
+  },
+  "20": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 1187,
+      "steps": 20,
+      "cfg": 4,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "sgm_uniform",
+      "denoise": 0.4,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 10,
+      "bbox_crop_factor": 3,
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False",
+      "drop_size": 10,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "image": [
+        "19",
+        0
+      ],
+      "model": [
+        "52",
+        1
+      ],
+      "clip": [
+        "52",
+        2
+      ],
+      "vae": [
+        "52",
+        3
+      ],
+      "positive": [
+        "52",
+        4
+      ],
+      "negative": [
+        "52",
+        5
+      ],
+      "bbox_detector": [
+        "13",
+        0
+      ],
+      "sam_model_opt": [
+        "10",
+        0
+      ],
+      "segm_detector_opt": [
+        "11",
+        1
+      ]
+    },
+    "class_type": "FaceDetailer",
+    "_meta": {
+      "title": "Eyes"
+    }
+  },
+  "24": {
+    "inputs": {
+      "model_name": "sam_vit_b_01ec64.pth",
+      "device_mode": "AUTO"
+    },
+    "class_type": "SAMLoader",
+    "_meta": {
+      "title": "SAMLoader (Impact)"
+    }
+  },
+  "26": {
+    "inputs": {
+      "model_name": "sam_vit_b_01ec64.pth",
+      "device_mode": "AUTO"
+    },
+    "class_type": "SAMLoader",
+    "_meta": {
+      "title": "SAMLoader (Impact)"
+    }
+  },
+  "28": {
+    "inputs": {
+      "model_name": "segm/Nipple-yoro11x_seg.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "30": {
+    "inputs": {
+      "model_name": "segm/person_yolov8m-seg.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "35": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 1187,
+      "steps": 20,
+      "cfg": 0.5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "sgm_uniform",
+      "denoise": 0.4,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 10,
+      "bbox_crop_factor": 3,
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False",
+      "drop_size": 10,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "image": [
+        "20",
+        0
+      ],
+      "model": [
+        "52",
+        1
+      ],
+      "clip": [
+        "52",
+        2
+      ],
+      "vae": [
+        "52",
+        3
+      ],
+      "positive": [
+        "52",
+        4
+      ],
+      "negative": [
+        "52",
+        5
+      ],
+      "bbox_detector": [
+        "18",
+        0
+      ],
+      "sam_model_opt": [
+        "15",
+        0
+      ],
+      "segm_detector_opt": [
+        "17",
+        1
+      ]
+    },
+    "class_type": "FaceDetailer",
+    "_meta": {
+      "title": "Hands"
+    }
+  },
+  "36": {
+    "inputs": {
+      "model_name": "bbox/breasts_seg.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "38": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 1187,
+      "steps": 20,
+      "cfg": 2,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "sgm_uniform",
+      "denoise": 0.4,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 10,
+      "bbox_crop_factor": 3,
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False",
+      "drop_size": 10,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "image": [
+        "35",
+        0
+      ],
+      "model": [
+        "52",
+        1
+      ],
+      "clip": [
+        "52",
+        2
+      ],
+      "vae": [
+        "52",
+        3
+      ],
+      "positive": [
+        "52",
+        4
+      ],
+      "negative": [
+        "52",
+        5
+      ],
+      "bbox_detector": [
+        "36",
+        0
+      ],
+      "sam_model_opt": [
+        "24",
+        0
+      ],
+      "segm_detector_opt": [
+        "30",
+        1
+      ]
+    },
+    "class_type": "FaceDetailer",
+    "_meta": {
+      "title": "Misc"
+    }
+  },
+  "40": {
+    "inputs": {
+      "model_name": "bbox/nipples_yolov8s.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "41": {
+    "inputs": {
+      "model_name": "bbox/assdetailer.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "42": {
+    "inputs": {
+      "model_name": "segm/assdetailer-seg.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "45": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 1187,
+      "steps": 20,
+      "cfg": 2,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "sgm_uniform",
+      "denoise": 0.4,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 10,
+      "bbox_crop_factor": 3,
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False",
+      "drop_size": 10,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "image": [
+        "67",
+        0
+      ],
+      "model": [
+        "52",
+        1
+      ],
+      "clip": [
+        "52",
+        2
+      ],
+      "vae": [
+        "52",
+        3
+      ],
+      "positive": [
+        "52",
+        4
+      ],
+      "negative": [
+        "52",
+        5
+      ],
+      "bbox_detector": [
+        "41",
+        0
+      ],
+      "sam_model_opt": [
+        "8",
+        0
+      ],
+      "segm_detector_opt": [
+        "42",
+        1
+      ]
+    },
+    "class_type": "FaceDetailer",
+    "_meta": {
+      "title": "Person Detailer"
+    }
+  },
+  "48": {
+    "inputs": {
+      "hook1": [
+        "49",
+        0
+      ],
+      "hook2": [
+        "50",
+        0
+      ]
+    },
+    "class_type": "PixelKSampleHookCombine",
+    "_meta": {
+      "title": "PixelKSampleHookCombine"
+    }
+  },
+  "49": {
+    "inputs": {
+      "schedule_for_iteration": "simple",
+      "target_denoise": 0.2
+    },
+    "class_type": "DenoiseScheduleHookProvider",
+    "_meta": {
+      "title": "DenoiseScheduleHookProvider"
+    }
+  },
+  "50": {
+    "inputs": {
+      "schedule_for_iteration": "simple",
+      "target_cfg": 6
+    },
+    "class_type": "CfgScheduleHookProvider",
+    "_meta": {
+      "title": "CfgScheduleHookProvider"
+    }
+  },
+  "52": {
+    "inputs": {
+      "basic_pipe": [
+        "112",
+        0
+      ]
+    },
+    "class_type": "FromBasicPipe_v2",
+    "_meta": {
+      "title": "FromBasicPipe_v2"
+    }
+  },
+  "54": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 1187,
+      "steps": 20,
+      "cfg": 0.5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "sgm_uniform",
+      "denoise": 0.4,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 10,
+      "bbox_crop_factor": 3,
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False",
+      "drop_size": 10,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "image": [
+        "38",
+        0
+      ],
+      "model": [
+        "52",
+        1
+      ],
+      "clip": [
+        "52",
+        2
+      ],
+      "vae": [
+        "52",
+        3
+      ],
+      "positive": [
+        "52",
+        4
+      ],
+      "negative": [
+        "52",
+        5
+      ],
+      "bbox_detector": [
+        "40",
+        0
+      ],
+      "sam_model_opt": [
+        "26",
+        0
+      ],
+      "segm_detector_opt": [
+        "28",
+        1
+      ]
+    },
+    "class_type": "FaceDetailer",
+    "_meta": {
+      "title": "Misc"
+    }
+  },
+  "57": {
+    "inputs": {
+      "model_name": "4x_foolhardy_Remacri.pth"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "Load Upscale Model"
+    }
+  },
+  "66": {
+    "inputs": {
+      "samples": [
+        "112",
+        1
+      ],
+      "vae": [
+        "112",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "67": {
+    "inputs": {
+      "method": "mkl",
+      "strength": 1,
+      "multithread": true,
+      "image_ref": [
+        "66",
+        0
+      ],
+      "image_target": [
+        "89",
+        0
+      ]
+    },
+    "class_type": "ColorMatch",
+    "_meta": {
+      "title": "Color Match"
+    }
+  },
+  "72": {
+    "inputs": {
+      "width": 1280,
+      "height": 592,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "Landscape"
+    }
+  },
+  "75": {
+    "inputs": {
+      "upscale_factor": 1.5,
+      "steps": 3,
+      "temp_prefix": "",
+      "step_mode": "simple",
+      "vae_compression": 8,
+      "samples": [
+        "112",
+        1
+      ],
+      "upscaler": [
+        "88",
+        0
+      ]
+    },
+    "class_type": "IterativeLatentUpscale",
+    "_meta": {
+      "title": "Iterative Upscale (Latent/on Pixel Space)"
+    }
+  },
+  "78": {
+    "inputs": {
+      "model": [
+        "118",
+        0
+      ],
+      "clip": [
+        "118",
+        1
+      ],
+      "vae": [
+        "117",
+        2
+      ],
+      "positive": [
+        "124",
+        0
+      ],
+      "negative": [
+        "123",
+        0
+      ]
+    },
+    "class_type": "ToBasicPipe",
+    "_meta": {
+      "title": "ToBasicPipe"
+    }
+  },
+  "88": {
+    "inputs": {
+      "scale_method": "nearest-exact",
+      "seed": 2,
+      "steps": 21,
+      "cfg": 5.5,
+      "sampler_name": "deis",
+      "scheduler": "sgm_uniform",
+      "denoise": 0.35000000000000003,
+      "use_tiled_vae": true,
+      "tile_size": 512,
+      "tile_cnet_strength": 1,
+      "basic_pipe": [
+        "112",
+        0
+      ],
+      "upscale_model_opt": [
+        "57",
+        0
+      ],
+      "pk_hook_opt": [
+        "48",
+        0
+      ]
+    },
+    "class_type": "PixelKSampleUpscalerProviderPipe",
+    "_meta": {
+      "title": "PixelKSampleUpscalerProviderPipe"
+    }
+  },
+  "89": {
+    "inputs": {
+      "samples": [
+        "75",
+        0
+      ],
+      "vae": [
+        "112",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "112": {
+    "inputs": {
+      "seed": 700849707155511,
+      "steps": 35,
+      "cfg": 5.5,
+      "sampler_name": "res_multistep",
+      "scheduler": "beta",
+      "denoise": 1,
+      "basic_pipe": [
+        "78",
+        0
+      ],
+      "latent_image": [
+        "72",
+        0
+      ]
+    },
+    "class_type": "ImpactKSamplerBasicPipe",
+    "_meta": {
+      "title": "KSampler (pipe)"
+    }
+  },
+  "117": {
+    "inputs": {
+      "ckpt_name": "ThrowingPastaScampi2.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "118": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "117",
+        0
+      ],
+      "clip": [
+        "117",
+        1
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "Power Lora Loader (rgthree)"
+    }
+  },
+  "120": {
+    "inputs": {
+      "text": "<PROMPT>"
+    },
+    "class_type": "PrimitiveText",
+    "_meta": {
+      "title": "Prompt to inject"
+    }
+  },
+  "121": {
+    "inputs": {
+      "string_a": "masterpiece, best quality, highres, HDR, anime style, very aesthetic, detailed illustration, bright colors, very aesthetic",
+      "string_b": [
+        "120",
+        0
+      ],
+      "delimiter": ","
+    },
+    "class_type": "StringConcatenate",
+    "_meta": {
+      "title": "Concatenate"
+    }
+  },
+  "123": {
+    "inputs": {
+      "text": "bad quality, worst quality, worst detail, censor, watermark, blurry, bad hands",
+      "clip": [
+        "118",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "124": {
+    "inputs": {
+      "text": [
+        "121",
+        0
+      ],
+      "clip": [
+        "118",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "125": {
+    "inputs": {
+      "images": [
+        "54",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  }
+}

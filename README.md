@@ -16,10 +16,11 @@ A Discord bot that roleplays as a character defined by a Character Card V2 JSON 
 The bot outputs structured JSON with `reply` and `commands` fields. This works with any model that can follow JSON format instructions:
 
 - **`react`** - React to messages with emojis (unicode or custom server emojis)
-- **`renameSelf`** - Change the bot's nickname (gated by `ALLOW_RENAMING`, runtime-guarded against prompt injection)
+- **`renameSelf`** - Change the bot's nickname (gated by `allow_renaming`, runtime-guarded against prompt injection)
 - **`renameUser`** - Change a user's nickname (permission-checked, runtime-guarded)
 - **`postSticker`** - Send a server sticker by name
 - **`editOrAddToLorebook`** - Create or update dynamic memory entries (writes to `chatMemory.json`, never touches static lorebook)
+- **`generateImage`** - Generate an image via ComfyUI with a prompt and orientation (sent as follow-up message)
 
 ### Stickers
 - Server stickers are listed in the system prompt so the bot knows what's available
@@ -66,96 +67,159 @@ npm install
 
 ## Configuration
 
-All configuration is via environment variables (`.env` file).
+Configuration is via `config.toml`. Copy the example file and edit it:
 
-### Environment Variables
+```bash
+cp config.example.toml config.toml
+```
 
-```env
-# ===========================================
-# LLM API Configuration
-# ===========================================
-LLM_API_KEY=                    # API key for your LLM provider
-LLM_BASE_URL=https://api.openai.com/v1  # Base URL for the chat completions endpoint
-LLM_MODEL=gpt-4o               # Model name to use
-LLM_TEMPERATURE=0.7            # Model temperature (0-2)
+### config.toml
 
-# ===========================================
-# Discord Bot Configuration
-# ===========================================
-DISCORD_BOT_TOKEN=              # Your Discord bot token (required)
-DISCORD_CHANNEL_ID=             # Channel IDs to respond in (comma-separated, leave empty for all)
-DISCORD_ALLOWED_USERS=          # User IDs allowed to use admin slash commands (comma-separated)
+```toml
+# --- LLM API ---
+[llm]
+api_key = "sk-..."                          # Required. API key for your LLM provider
+base_url = "https://api.openai.com/v1"      # Base URL for chat completions
+model = "gpt-4o"                            # Model identifier
+temperature = 0.7                           # Generation temperature (0-2)
 
-# ===========================================
-# Bot Behavior Settings
-# ===========================================
-RANDOM_RESPONSE_RATE=50         # Respond randomly to 1 in X messages (-1 to disable)
-MAX_HISTORY_MESSAGES=30         # Number of recent messages to fetch for context
-MAX_CONTEXT_TOKENS=20000        # Maximum tokens for context (includes system prompt)
-IGNORE_OTHER_BOTS=true          # Whether to ignore messages from other bots
-TRIGGER_KEYWORDS=               # Additional keywords that trigger responses (comma-separated)
-ADD_TIMESTAMPS=true             # Add timestamps to messages in context
-MIN_RESPONSE_INTERVAL_SECONDS=0 # Minimum seconds between responses in the same channel
-REPLY_TO_MENTIONS=true          # If false, bot won't reply to mentions (unless whitelisted)
-MENTION_TRIGGER_ALLOWED_USERS=  # User IDs that always trigger mention/keyword replies (comma-separated)
-ADD_NOTHINK=false               # Adds disable-thinking tag for models that support it
-ENABLE_VISION=true              # Pass images/stickers to the LLM (model must support vision)
-ENABLE_USER_STATUS=true         # Show user Discord status/activities in context (requires Presence Intent)
-ALLOW_RENAMING=false            # Allow the bot to rename itself and others via commands
+# --- Discord Bot ---
+[discord]
+bot_token = ""                              # Required. Discord bot token
+channel_ids = []                            # Channel IDs (empty = all channels)
+allowed_user_ids = []                       # Admin slash command users
+random_response_rate = 50                   # 1 in X messages (-1 to disable)
+max_history_messages = 30                   # Context history size
+max_context_tokens = 20000                  # Max tokens for context
+ignore_other_bots = true
+trigger_keywords = []
+reply_to_mentions = true
+mention_trigger_allowed_user_ids = []
+add_timestamps = true
+min_response_interval_seconds = 0
+add_nothink = false
+enable_user_status = false                  # Requires Presence Intent
+allow_renaming = false
 
-# ===========================================
-# Lorebook & Memory
-# ===========================================
-ALLOW_LOREBOOK_EDITING=false    # Allow the character to create/update memory book entries
-CHARACTER_FILE_PATH=./character.json  # Path to the character card JSON file
-CHAT_MEMORY_BOOK_PATH=./chatMemory.json  # Path to the dynamic memory book (auto-created)
-LOG_LEVEL=INFO                  # Log level: DEBUG, INFO, WARN, ERROR (default: INFO)
+# --- Vision Model ---
+[vision]
+enabled = false                             # Pass images to LLM (must support vision)
+model = "gpt-4o-mini"
+api_key = ""                                # Falls back to llm.api_key
+base_url = ""                               # Falls back to llm.base_url
+
+# --- Behavior ---
+[behavior]
+allow_lorebook_editing = false
+character_file_path = "./character.json"
+chat_memory_book_path = "./chatMemory.json"
+log_level = "INFO"                          # DEBUG, INFO, WARN, ERROR
+
+# --- ComfyUI Image Generation ---
+[comfyui]
+enabled = false                             # Enable image generation
+base_url = ""                               # ComfyUI server URL
+workflow_path = "./workflow.json"           # Workflow template path
+timeout_seconds = 120                       # Max wait time
+poll_interval_ms = 2000                     # Poll frequency
+
+[comfyui.resolutions]
+square = [1280, 1280]
+portrait = [1008, 1280]
+landscape = [1280, 1008]
 ```
 
 ### Configuration Details
 
 **LLM Settings:**
-- `LLM_API_KEY` - API key for your provider
-- `LLM_BASE_URL` - Base URL for the chat completions endpoint
-- `LLM_MODEL` - Model identifier (e.g. `gpt-4o`, `anthropic/claude-3.5-sonnet`, `deepseek/deepseek-v3.2`)
-- `LLM_TEMPERATURE` - Generation temperature (0 = deterministic, 2 = very random)
+- `llm.api_key` - API key for your provider
+- `llm.base_url` - Base URL for the chat completions endpoint
+- `llm.model` - Model identifier (e.g. `gpt-4o`, `anthropic/claude-3.5-sonnet`, `deepseek/deepseek-v3.2`)
+- `llm.temperature` - Generation temperature (0 = deterministic, 2 = very random)
 
 **Discord Settings:**
-- `DISCORD_BOT_TOKEN` - Bot token from the Discord Developer Portal
-- `DISCORD_CHANNEL_ID` - Restrict to specific channels (comma-separated). Leave empty to respond everywhere
-- `DISCORD_ALLOWED_USERS` - User IDs that can use admin slash commands (comma-separated)
+- `discord.bot_token` - Bot token from the Discord Developer Portal
+- `discord.channel_ids` - Restrict to specific channels. Empty array to respond everywhere
+- `discord.allowed_user_ids` - User IDs that can use admin slash commands
 
 **Trigger Behavior:**
-- `RANDOM_RESPONSE_RATE` - Bot responds to roughly 1-in-X messages. Set to `0` or `-1` to disable
-- `REPLY_TO_MENTIONS` - Whether the bot responds when mentioned or its name is said
-- `MENTION_TRIGGER_ALLOWED_USERS` - Users who bypass `REPLY_TO_MENTIONS=false` and `MIN_RESPONSE_INTERVAL_SECONDS`
-- `TRIGGER_KEYWORDS` - Additional words that trigger a response (full word match)
-- `MIN_RESPONSE_INTERVAL_SECONDS` - Cooldown between responses per channel
+- `discord.random_response_rate` - Bot responds to roughly 1-in-X messages. Set to `0` or `-1` to disable
+- `discord.reply_to_mentions` - Whether the bot responds when mentioned or its name is said
+- `discord.mention_trigger_allowed_user_ids` - Users who bypass `reply_to_mentions=false` and cooldowns
+- `discord.trigger_keywords` - Additional words that trigger a response (full word match)
+- `discord.min_response_interval_seconds` - Cooldown between responses per channel
 
 **Vision & Media:**
-- `ENABLE_VISION` - When `true`, image attachments and sticker images are passed to the LLM as base64. Your model must support multimodal input
-- `ENABLE_USER_STATUS` - When `true`, user presence (online/idle/dnd, activities) is added to context. Requires the Presence Intent in the Discord Developer Portal
+- `vision.enabled` - When `true`, image attachments and sticker images are passed to the LLM. Your model must support multimodal input
+- `discord.enable_user_status` - When `true`, user presence (online/idle/dnd, activities) is added to context. Requires the Presence Intent
 
 **Lorebook & Memory:**
-- `ALLOW_LOREBOOK_EDITING` - When `true`, the bot can create and update entries in the Chat Memory Book via the `editOrAddToLorebook` command. Static lorebook entries are never modified
-- `CHARACTER_FILE_PATH` - Path to the Character Card V2 JSON file
-- `CHAT_MEMORY_BOOK_PATH` - Path to the dynamic memory book file. Auto-created if it doesn't exist
+- `behavior.allow_lorebook_editing` - When `true`, the bot can create and update entries in the Chat Memory Book. Static lorebook entries are never modified
+- `behavior.character_file_path` - Path to the Character Card V2 JSON file
+- `behavior.chat_memory_book_path` - Path to the dynamic memory book. Auto-created if it doesn't exist
+
+**ComfyUI Image Generation:**
+- `comfyui.enabled` - Enable the `generateImage` command
+- `comfyui.base_url` - URL of your ComfyUI instance (e.g. `https://comfyui.example.com`)
+- `comfyui.workflow_path` - Path to the workflow template JSON file
+- `comfyui.timeout_seconds` - Maximum time to wait for image generation
+- `comfyui.resolutions` - Width/height for each orientation (square, portrait, landscape)
+
+## Setting Up ComfyUI Image Generation
+
+The bot can generate images via ComfyUI when enabled. The flow is:
+1. The LLM uses the `generateImage` command with a prompt and orientation
+2. The bot loads your workflow template, injects the prompt and resolution
+3. The workflow is submitted to your ComfyUI instance
+4. The bot polls for completion, downloads the image, and sends it as a follow-up
+
+### Creating a Workflow Template
+
+1. Design your workflow in ComfyUI and export it as JSON
+2. Find the node that contains your prompt text and replace its value with exactly `<PROMPT>`
+3. The bot will find any node with both `width` and `height` inputs and set the resolution
+4. Save as `workflow.json`
+
+Example workflow snippet:
+```json
+{
+  "120": {
+    "inputs": {
+      "text": "<PROMPT>"
+    },
+    "class_type": "PrimitiveText",
+    "_meta": { "title": "Prompt to inject" }
+  },
+  "5": {
+    "inputs": {
+      "width": 1280,
+      "height": 1280,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage"
+  }
+}
+```
+
+See `workflow.example.json` for a complete example.
 
 ## Setting Up the LLM API
 
 ### OpenAI
-```env
-LLM_API_KEY=sk-...
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_MODEL=gpt-4o
+```toml
+[llm]
+api_key = "sk-..."
+base_url = "https://api.openai.com/v1"
+model = "gpt-4o"
 ```
 
 ### OpenRouter
 OpenRouter provides access to many providers through a single API:
-```env
-LLM_API_KEY=sk-or-v1-...
-LLM_BASE_URL=https://openrouter.ai/api/v1
-LLM_MODEL=anthropic/claude-3.5-sonnet
+```toml
+[llm]
+api_key = "sk-or-v1-..."
+base_url = "https://openrouter.ai/api/v1"
+model = "anthropic/claude-3.5-sonnet"
 ```
 
 ### Other Providers
@@ -164,7 +228,7 @@ Any OpenAI-compatible API works:
 - **Zhipu AI (GLM)**: Direct API access
 - **Together AI, Groq, DeepSeek**: Most modern APIs follow the OpenAI format
 
-Just set `LLM_BASE_URL` to the provider's chat completions endpoint.
+Just set `llm.base_url` to the provider's chat completions endpoint.
 
 ## Discord Bot Setup
 
@@ -239,21 +303,25 @@ docker-compose up -d
 2. Message history is fetched, with reactions and stickers extracted
 3. The system prompt is built with character info, lorebook matches, emoji/sticker lists, and conversation history
 4. The LLM returns JSON: `{ "reply": "...", "commands": [...] }`
-5. Commands are executed (react, rename, post sticker, edit memory, etc.)
-6. The reply is sent to Discord
+5. Instant commands are executed (react, rename, post sticker, edit memory)
+6. The text reply is sent to Discord immediately
+7. Async commands run after the reply (e.g. image generation) and results are sent as follow-up messages
 
 ## Project Structure
 
 ```
 src/
   index.ts              # Entry point
-  config.ts             # Configuration and command definitions
+  config.ts             # TOML configuration loader and command definitions
   models.ts             # TypeScript type definitions
   types.ts              # Lorebook-specific types
   api/
     llm.ts              # OpenAI-compatible API client
+    comfyui.ts          # ComfyUI image generation client
+    vision.ts           # Vision model API client
   classes/
     DiscordBot.ts       # Main bot class with event handlers
+    MessageQueue.ts     # Per-channel message queue
   commands/
     CommandHandler.ts   # Slash command handler
     CommandManager.ts   # Slash command registration
@@ -265,9 +333,11 @@ src/
     prompt.ts           # Prompt building, token trimming, reaction reconstruction
   utils/
     botCommandHandler.ts # Execute commands from AI responses
+    ResponseContexts.ts  # Unified reply/followUp interface for messages & interactions
     responseParser.ts   # Parse AI JSON responses
     tokenCounter.ts     # Token counting for context management
-    lorebookEditor.ts   # Legacy lorebook command processing (regex-based)
+    logger.ts           # Timestamped logger
+    lorebookEditor.ts   # Legacy lorebook command processing
 ```
 
 ## License

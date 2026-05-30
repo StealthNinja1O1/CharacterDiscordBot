@@ -9,7 +9,8 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  Message
+  Message,
+  AttachmentBuilder,
 } from "discord.js";
 import { DiscordBot } from "../classes/DiscordBot.js";
 import CommandManager from "./CommandManager.js";
@@ -19,9 +20,11 @@ import { ChatMemoryBook, saveChatMemoryBook, upsertChatMemoryEntry } from "../to
 import { log } from "../utils/logger.js";
 import { buildAIRequest, trimMessagesToTokenBudget } from "../tools/prompt.js";
 import { executeBotCommands } from "../utils/botCommandHandler.js";
+import { splitCommands, executeInstantCommands, executeAsyncCommands } from "../utils/botCommandHandler.js";
 import { parseAIResponse } from "../utils/responseParser.js";
 import { generateResponse } from "../api/llm.js";
 import { fetchMessageHistory, formatMessagesForAI } from "../tools/MessageHistory.js";
+import { InteractionResponseContext } from "../utils/ResponseContexts.js";
 
 export default class CommandHandler {
   private bot: DiscordBot;
@@ -172,12 +175,16 @@ export default class CommandHandler {
         const { model, messages, temperature } = await buildAIRequest({ character: this.bot.getCharacter(), messages: trimmed, userName });
         const raw = await generateResponse(model, messages, temperature, config.addNothink);
 
-        let characterUpdated = false;
         const parsed = parseAIResponse(raw);
+        const ctx = new InteractionResponseContext(modalInt);
 
-        // Execute bot commands if present
-        if (parsed.commands && parsed.commands.length > 0) {
-          const commandResults = await executeBotCommands(parsed.commands, {
+        // Split commands into instant and async
+        const allCommands = parsed.commands || [];
+        const { instant, async: asyncCmds } = splitCommands(allCommands);
+
+        // Execute instant commands (react, rename, etc.)
+        if (instant.length > 0) {
+          const commandResults = await executeInstantCommands(instant, {
             message: targetMessage as any,
             character: this.bot.getCharacter(),
             characterFilePath: config.characterFilePath,
@@ -191,10 +198,27 @@ export default class CommandHandler {
           }
         }
 
-        const finalReply = parsed.reply?.trim() || parsed.reply?.trim() || "*...*";
-        const chunks = finalReply.match(/[\s\S]{1,2000}/g) || [finalReply];
-        await modalInt.editReply(chunks[0]);
-        for (let i = 1; i < chunks.length; i++) await modalInt.followUp(chunks[i]);
+        // Send text reply
+        const finalReply = parsed.reply?.trim() || "*...*";
+        await ctx.sendReply(finalReply);
+
+        // Execute async commands (generateImage)
+        if (asyncCmds.length > 0) {
+          const asyncResults = await executeAsyncCommands(asyncCmds, {
+            message: targetMessage as any,
+            character: this.bot.getCharacter(),
+          });
+          for (const result of asyncResults) {
+            if (result.success && result.attachment) {
+              const file = new AttachmentBuilder(result.attachment.buffer, { name: result.attachment.name });
+              await ctx.sendFollowUp("", [file]);
+              log.info(`Async command: ${result.message}`);
+            } else if (!result.success) {
+              await ctx.sendFollowUp("*[The static interfered with the image generation...]*");
+              log.warn(`Async command failed: ${result.message}`);
+            }
+          }
+        }
       } catch (err) {
         log.error("AskChar modal error:", err);
         try { await modalInt.editReply("*Something went wrong... The static consumes my words.*"); } catch (_) {}
@@ -228,16 +252,39 @@ export default class CommandHandler {
 
       const raw = await generateResponse(model, messages, temperature, config.addNothink);
       const parsed = parseAIResponse(raw);
+      const ctx = new InteractionResponseContext(cmd);
 
-      // Can't execute bot commands here as we don't have a message context
-      if (parsed.commands && parsed.commands.length > 0) {
-        log.debug("Ask command cannot execute bot commands (no message context):", parsed.commands);
+      // Split commands — instant commands need message context (skip them),
+      // but async commands like generateImage can run without one
+      const allCommands = parsed.commands || [];
+      const { instant, async: asyncCmds } = splitCommands(allCommands);
+
+      // Skip instant commands — no message context for reactions/renames
+      if (instant.length > 0) {
+        log.debug("Ask command cannot execute instant commands (no message context):", instant);
       }
 
-      const finalReply = parsed.reply?.trim() || parsed.reply?.trim() || "*...*";
-      const chunks = finalReply.match(/[\s\S]{1,2000}/g) || [finalReply];
-      await cmd.editReply(chunks[0]);
-      for (let i = 1; i < chunks.length; i++) await cmd.followUp(chunks[i]);
+      // Send text reply
+      const finalReply = parsed.reply?.trim() || "*...*";
+      await ctx.sendReply(finalReply);
+
+      // Execute async commands (generateImage works without message context)
+      if (asyncCmds.length > 0) {
+        const asyncResults = await executeAsyncCommands(asyncCmds, {
+          message: null as any, // async commands don't need message context
+          character: this.bot.getCharacter(),
+        });
+        for (const result of asyncResults) {
+          if (result.success && result.attachment) {
+            const file = new AttachmentBuilder(result.attachment.buffer, { name: result.attachment.name });
+            await ctx.sendFollowUp("", [file]);
+            log.info(`Async command: ${result.message}`);
+          } else if (!result.success) {
+            await ctx.sendFollowUp("*[The static interfered with the image generation...]*");
+            log.warn(`Async command failed: ${result.message}`);
+          }
+        }
+      }
     } catch (err) {
       log.error("Ask command error:", err);
       try {

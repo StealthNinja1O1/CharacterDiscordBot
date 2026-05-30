@@ -1,9 +1,6 @@
 import { ImageAttachment } from "../models.js";
-import { DiscordConfig } from "../config.js";
+import { DiscordConfig, llmConfig } from "../config.js";
 import { log } from "../utils/logger.js";
-
-const LLM_API_KEY = process.env.LLM_API_KEY;
-const LLM_BASE_URL = process.env.LLM_BASE_URL;
 
 interface VisionChatMessage {
   role: "user";
@@ -30,8 +27,8 @@ interface VisionCompletionResponse {
  * Returns a detailed text description of the image contents.
  */
 export async function describeImage(image: ImageAttachment, config: DiscordConfig): Promise<string> {
-  const apiKey = config.visionModelApiKey || LLM_API_KEY || "";
-  const baseUrl = config.visionModelBaseUrl || LLM_BASE_URL || "";
+  const apiKey = config.visionModelApiKey || llmConfig.apiKey || "";
+  const baseUrl = config.visionModelBaseUrl || llmConfig.baseUrl || "";
 
   const content: VisionChatMessage["content"] = [
     {

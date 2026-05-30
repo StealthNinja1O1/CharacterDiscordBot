@@ -1,6 +1,21 @@
+import { readFileSync, existsSync } from "fs";
+import TOML from "smol-toml";
+
+// ============================================================
+// Configuration Interfaces
+// ============================================================
+
+export interface LlmConfig {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  temperature: number;
+}
+
 export interface DiscordConfig {
   botToken: string;
   channelId: string[];
+  channelIds: string[];
   allowedUserIds: string[];
   randomResponseRate: number;
   maxHistoryMessages: number;
@@ -23,34 +38,162 @@ export interface DiscordConfig {
   chatMemoryBookPath: string;
 }
 
-export const discordConfig: DiscordConfig = {
-  botToken: process.env.DISCORD_BOT_TOKEN || "",
-  channelId: (process.env.DISCORD_CHANNEL_ID || "").split(",").filter(Boolean),
-  allowedUserIds: (process.env.DISCORD_ALLOWED_USERS || "").split(",").filter(Boolean),
-  randomResponseRate: parseInt(process.env.RANDOM_RESPONSE_RATE || "50", 10),
-  maxHistoryMessages: parseInt(process.env.MAX_HISTORY_MESSAGES || "20", 10),
-  maxContextTokens: parseInt(process.env.MAX_CONTEXT_TOKENS || "20000", 10),
-  ignoreOtherBots: process.env.IGNORE_OTHER_BOTS === "true" || true,
-  triggerKeywords: (process.env.TRIGGER_KEYWORDS || "").split(",").filter(Boolean),
-  allowLorebookEditing: process.env.ALLOW_LOREBOOK_EDITING === "true" || false,
-  characterFilePath: process.env.CHARACTER_FILE_PATH || "./character.json",
-  addTimestamps: process.env.ADD_TIMESTAMPS === "true" || false,
-  minResponseIntervalSeconds: parseInt(process.env.MIN_RESPONSE_INTERVAL_SECONDS || "0", 10),
-  replyToMentions: process.env.REPLY_TO_MENTIONS === "true" || true,
-  mentionTriggerAllowedUserIds: (process.env.MENTION_TRIGGER_ALLOWED_USERS || "").split(",").filter(Boolean),
-  addNothink: process.env.ADD_NOTHINK === "true" || false,
-  enableVision: process.env.ENABLE_VISION === "true" || false,
-  visionModel: process.env.VISION_MODEL || "",
-  visionModelApiKey: process.env.VISION_MODEL_API_KEY || "",
-  visionModelBaseUrl: process.env.VISION_MODEL_BASE_URL || "",
-  allowRenaming: process.env.ALLOW_RENAMING === "true" || false,
-  enableUserStatus: process.env.ENABLE_USER_STATUS === "true" || false,
-  chatMemoryBookPath: process.env.CHAT_MEMORY_BOOK_PATH || "./chatMemory.json",
+export interface VisionConfig {
+  enabled: boolean;
+  model: string;
+  apiKey: string;
+  baseUrl: string;
+}
+
+export interface BehaviorConfig {
+  allowLorebookEditing: boolean;
+  characterFilePath: string;
+  chatMemoryBookPath: string;
+  logLevel: string;
+}
+
+export interface ComfyUiConfig {
+  enabled: boolean;
+  baseUrl: string;
+  workflowPath: string;
+  timeoutSeconds: number;
+  pollIntervalMs: number;
+  randomizeSeeds: boolean;
+  stripMetadata: boolean;
+  resolutions: {
+    square: [number, number];
+    portrait: [number, number];
+    landscape: [number, number];
+  };
+}
+
+export interface AppConfig {
+  llm: LlmConfig;
+  discord: DiscordConfig;
+  vision: VisionConfig;
+  behavior: BehaviorConfig;
+  comfyui: ComfyUiConfig;
+}
+
+// ============================================================
+// Load & Parse Configuration
+// ============================================================
+
+const configPath = process.env.CONFIG_PATH || "./config.toml";
+
+if (!existsSync(configPath)) {
+  throw new Error(
+    `Configuration file not found: ${configPath}\nCopy config.example.toml to config.toml and edit the values.`,
+  );
+}
+
+const rawToml = readFileSync(configPath, "utf-8");
+const parsed = TOML.parse(rawToml) as any;
+
+// ============================================================
+// Build typed config with defaults and fallbacks
+// ============================================================
+
+const config: AppConfig = {
+  llm: {
+    apiKey: parsed.llm?.api_key ?? "",
+    baseUrl: parsed.llm?.base_url ?? "https://api.openai.com/v1",
+    model: parsed.llm?.model ?? "gpt-4o",
+    temperature: parseFloat(String(parsed.llm?.temperature ?? "0.7")) || 0.7,
+  },
+
+  vision: {
+    enabled: parsed.vision?.enabled === true,
+    model: parsed.vision?.model ?? "gpt-4o-mini",
+    apiKey: parsed.vision?.api_key || parsed.llm?.api_key || "",
+    baseUrl: parsed.vision?.base_url || parsed.llm?.base_url || "",
+  },
+
+  behavior: {
+    allowLorebookEditing: parsed.behavior?.allow_lorebook_editing === true,
+    characterFilePath: parsed.behavior?.character_file_path ?? "./character.json",
+    chatMemoryBookPath: parsed.behavior?.chat_memory_book_path ?? "./chatMemory.json",
+    logLevel: parsed.behavior?.log_level ?? "INFO",
+  },
+
+  comfyui: {
+    enabled: parsed.comfyui?.enabled === true,
+    baseUrl: parsed.comfyui?.base_url ?? "",
+    workflowPath: parsed.comfyui?.workflow_path ?? "./workflow.json",
+    timeoutSeconds: parseInt(String(parsed.comfyui?.timeout_seconds ?? "120"), 10),
+    pollIntervalMs: parseInt(String(parsed.comfyui?.poll_interval_ms ?? "2000"), 10),
+    randomizeSeeds: parsed.comfyui?.randomize_seeds !== false,
+    stripMetadata: parsed.comfyui?.strip_metadata === true,
+    resolutions: {
+      square: (parsed.comfyui?.resolutions?.square as [number, number]) ?? [1280, 1280],
+      portrait: (parsed.comfyui?.resolutions?.portrait as [number, number]) ?? [1008, 1280],
+      landscape: (parsed.comfyui?.resolutions?.landscape as [number, number]) ?? [1280, 1008],
+    },
+  },
+
+  discord: {
+    botToken: parsed.discord?.bot_token ?? "",
+    channelIds: parsed.discord?.channel_ids ?? [],
+    channelId: parsed.discord?.channel_ids ?? [], // backward compat alias
+    allowedUserIds: parsed.discord?.allowed_user_ids ?? [],
+    randomResponseRate: parseInt(String(parsed.discord?.random_response_rate ?? "50"), 10),
+    maxHistoryMessages: parseInt(String(parsed.discord?.max_history_messages ?? "30"), 10),
+    maxContextTokens: parseInt(String(parsed.discord?.max_context_tokens ?? "20000"), 10),
+    ignoreOtherBots: parsed.discord?.ignore_other_bots !== false,
+    triggerKeywords: parsed.discord?.trigger_keywords ?? [],
+    replyToMentions: parsed.discord?.reply_to_mentions !== false,
+    mentionTriggerAllowedUserIds: parsed.discord?.mention_trigger_allowed_user_ids ?? [],
+    addTimestamps: parsed.discord?.add_timestamps === true,
+    minResponseIntervalSeconds: parseInt(String(parsed.discord?.min_response_interval_seconds ?? "0"), 10),
+    addNothink: parsed.discord?.add_nothink === true,
+    enableUserStatus: parsed.discord?.enable_user_status === true,
+    allowRenaming: parsed.discord?.allow_renaming === true,
+    enableVision: parsed.vision?.enabled === true,
+    visionModel: parsed.vision?.model ?? "",
+    visionModelApiKey: parsed.vision?.api_key || parsed.llm?.api_key || "",
+    visionModelBaseUrl: parsed.vision?.base_url || parsed.llm?.base_url || "",
+    allowLorebookEditing: parsed.behavior?.allow_lorebook_editing === true,
+    characterFilePath: parsed.behavior?.character_file_path ?? "./character.json",
+    chatMemoryBookPath: parsed.behavior?.chat_memory_book_path ?? "./chatMemory.json",
+  },
 };
 
-if (!discordConfig.botToken) throw new Error("DISCORD_BOT_TOKEN is not configured in .env file");
-// doesnt have to be locked to 1 channel, so commented out
-// if (!discordConfig.channelId) throw new Error("DISCORD_CHANNEL_ID is not configured in .env file");
+// ============================================================
+// Validation
+// ============================================================
+
+if (!config.discord.botToken) {
+  throw new Error("discord.bot_token is required in config.toml");
+}
+
+if (!config.llm.apiKey) {
+  throw new Error("llm.api_key is required in config.toml");
+}
+
+if (!config.llm.baseUrl) {
+  throw new Error("llm.base_url is required in config.toml");
+}
+
+if (config.comfyui.enabled && !config.comfyui.baseUrl) {
+  throw new Error("comfyui.base_url is required when comfyui.enabled is true");
+}
+
+// ============================================================
+// Exports
+// ============================================================
+
+export { config };
+
+// Convenience re-exports
+export const discordConfig = config.discord;
+export const llmConfig = config.llm;
+export const visionConfig = config.vision;
+export const behaviorConfig = config.behavior;
+export const comfyuiConfig = config.comfyui;
+
+// ============================================================
+// Available Commands (injected into LLM system prompt)
+// ============================================================
 
 export const availableCommands = [
   {
@@ -64,13 +207,13 @@ export const availableCommands = [
     name: "renameSelf",
     args: { newName: "string" },
     description: "Change {{char}}'s nickname in the server to the specified newName.",
-    enabled: discordConfig.allowRenaming,
+    enabled: config.discord.allowRenaming,
   },
   {
     name: "renameUser",
     args: { userId: "string", newName: "string" },
     description: "Change the nickname of the specified user in the server to newName.",
-    enabled: discordConfig.allowRenaming,
+    enabled: config.discord.allowRenaming,
   },
   {
     name: "postSticker",
@@ -83,11 +226,21 @@ export const availableCommands = [
     args: { entryName: "string", keywords: ["name1", "..."], content: "string" },
     description: `You can create or update existing lorebook entries about people or things you learn. Do this when you learn something new about a user.
       You can also add entries but please only update entries that you can see the value of.
-      Keywords are what trigger the entry to be included in context, so use them wisely, its smart to add userid, username and displayname, along with possible nicknames or descriptive keywords. 
+      Keywords are what trigger the entry to be included in context, so use them wisely, its smart to add userid, username and displayname, along with possible nicknames or descriptive keywords.
       USE THIS COMMAND CONSISTENTLY`,
-    enabled: discordConfig.allowLorebookEditing,
+    enabled: config.discord.allowLorebookEditing,
+  },
+  {
+    name: "generateImage",
+    args: { prompt: "string", orientation: "portrait | square | landscape (default: square)" },
+    description: `Generate an image using the image generator. Provide a descriptive prompt and choose orientation. The image will be sent as a follow-up message. Use Booru style tags like "1girl, smile, blue hair, medium breasts, cowboy shot, dark, simple background" etc. natural language does not work as well.`,
+    enabled: config.comfyui.enabled,
   },
 ];
+
+// ============================================================
+// Default Preset (system prompt template)
+// ============================================================
 
 export const DEFAULT_PRESET = {
   name: "Default",
@@ -169,14 +322,16 @@ A member of the discord server {{serverName}} in channel {{channelName}} named {
   inject_examples: true,
   override_description: null,
   override_examples: null,
-  model: process.env.LLM_MODEL || "gpt-5-mini",
-  temperature: parseFloat(process.env.LLM_TEMPERATURE || "0.7") || 0.7,
+  model: config.llm.model,
+  temperature: config.llm.temperature,
   is_default: true,
 };
 
 // Kimi thinking fix by https://github.com/axshb
-if (process.env.LLM_MODEL?.toLowerCase().includes("kimi")) {
-  const promptFix = `[OOC: Keep your thinking short. Do not draft, plan, make bullet points, or anything along those lines. You are confident. Your output should be immediate and direct. Do not revise anything at all before displaying it to {{user}}. That is not your job. Keep the reasoning/thinking to max 300 tokens.]`
-  // inject before `{History start}`
-  DEFAULT_PRESET.prompt_template = DEFAULT_PRESET.prompt_template.replace("{History start}", `${promptFix}\n\n{History start}`);
+if (config.llm.model.toLowerCase().includes("kimi")) {
+  const promptFix = `[OOC: Keep your thinking short. Do not draft, plan, make bullet points, or anything along those lines. You are confident. Your output should be immediate and direct. Do not revise anything at all before displaying it to {{user}}. That is not your job. Keep the reasoning/thinking to max 300 tokens.]`;
+  DEFAULT_PRESET.prompt_template = DEFAULT_PRESET.prompt_template.replace(
+    "{History start}",
+    `${promptFix}\n\n{History start}`,
+  );
 }

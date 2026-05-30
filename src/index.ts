@@ -1,5 +1,4 @@
-﻿import "dotenv/config";
-import { discordConfig } from "./config.js";
+﻿import { discordConfig } from "./config.js";
 import { DiscordBot } from "./classes/DiscordBot.js";
 import { Character } from "./models.js";
 import { readFileSync, writeFileSync } from "fs";

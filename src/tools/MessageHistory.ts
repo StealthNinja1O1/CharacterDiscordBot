@@ -36,13 +36,16 @@ export async function fetchMessageHistory(message: Message, limit: number, botId
   try {
     const fetchedMessages = await message.channel.messages.fetch({
       limit: limit,
-      before: message.id,
     });
 
-    const sortedMessages = Array.from(fetchedMessages.values()).sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+    // Remove the trigger message itself — the caller (generateAIResponse) appends it separately at the end so we force a reply to it. Add timestamps if you want the llm to know its out of order.
+    const filtered = Array.from(fetchedMessages.values()).filter((msg) => {
+      if (msg.id === message.id) return false;
+      return true;
+    });
 
-    // got high latency. every mention was a serial guild.members.fetch per message. 
-    // collect unique IDs here, resolve in parallel below.
+    const sortedMessages = filtered.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+
     const mentionPattern = /<@!?(\d+)>/g;
     const allMentionIds = new Set<string>();
     for (const msg of sortedMessages) {

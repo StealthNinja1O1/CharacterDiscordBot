@@ -302,6 +302,8 @@ Use them by adding "commands":[{name:"commandName", "args":{"arg1":"value"}}] in
 Multiple commands can be used at once by adding more objects to the "commands" array. If you don't want to use any commands, just return an empty array. Always return valid JSON, never deviate from the format or add any commentary outside of it.
 Your message history will show the commands you previously used (like reactions). Always fully write out any new commands you want to use in the "commands" array.
 ]
+
+Image attachments like [Attached image: ...] are images sent by either yourself or the user, transcribed to text so you can understand it. This is not written by the user but generated. DO not assume they wrote it.
 </rules>
 <lore>
 {Description}

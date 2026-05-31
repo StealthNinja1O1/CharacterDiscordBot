@@ -394,6 +394,11 @@ export async function generateAIResponse(
       }
     }
 
+    // log last 5 messages
+    // for (let i = Math.max(messages.length - 5, 0); i < messages.length; i++) {
+    //   log.debug(`Message ${i + 1}/${messages.length} - Role: ${messages[i].role}, Content: ${messages[i].content.substring(0, 100)}...`);
+    // }
+
     const response = await generateResponse(model, messages, temperature, config.addNothink, finalImages);
 
     return response;

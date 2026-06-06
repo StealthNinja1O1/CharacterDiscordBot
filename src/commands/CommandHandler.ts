@@ -25,6 +25,8 @@ import { parseAIResponse } from "../utils/responseParser.js";
 import { generateResponse } from "../api/llm.js";
 import { fetchMessageHistory, formatMessagesForAI } from "../tools/MessageHistory.js";
 import { InteractionResponseContext } from "../utils/ResponseContexts.js";
+import { extractImagesFromMessage, extractStickerImagesFromMessage } from "../tools/MessageHistory.js";
+import { describeImages, formatImageDescriptions } from "../api/vision.js";
 
 export default class CommandHandler {
   private bot: DiscordBot;
@@ -164,7 +166,28 @@ export default class CommandHandler {
 
         const history = await fetchMessageHistory(targetMessage as any, config.maxHistoryMessages, this.bot.botDiscordId || null);
         const formattedHistory = formatMessagesForAI(history);
-        formattedHistory.push({ role: "user", content: `${displayName} (${userName} - ${userId}): ${targetMessage.content}`, createdAt: targetMessage.createdAt });
+
+        // Extract images from the target message
+        const targetImages = await extractImagesFromMessage(targetMessage as any);
+        const targetStickerImages = await extractStickerImagesFromMessage(targetMessage as any);
+        const allTargetImages = [...targetImages, ...targetStickerImages];
+        let imageDescriptionText = "";
+        if (config.enableVision && allTargetImages.length > 0 && config.visionModel) {
+          try {
+            log.debug(`AskChar: Describing ${allTargetImages.length} image(s) with vision model`);
+            const descriptions = await describeImages(allTargetImages, config);
+            imageDescriptionText = formatImageDescriptions(descriptions);
+          } catch (err) {
+            log.warn("AskChar: Vision model failed, skipping image descriptions:", err);
+          }
+        }
+
+        const targetContent = targetMessage.content || "";
+        const messageContent = imageDescriptionText
+          ? `${displayName} (${userName} - ${userId}): ${imageDescriptionText}${targetContent ? "\n" + targetContent : ""}`
+          : `${displayName} (${userName} - ${userId}): ${targetContent}`;
+
+        formattedHistory.push({ role: "user", content: messageContent, createdAt: targetMessage.createdAt });
 
         const allMessages = formattedHistory.map((m, i) => ({ id: `h-${i}`, role: m.role, content: m.content, createdAt: m.createdAt }));
         if (manualContext) {

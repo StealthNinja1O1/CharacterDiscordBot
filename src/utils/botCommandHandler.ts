@@ -375,7 +375,7 @@ async function executeGenerateImage(
     const result = await generateImage(prompt, safeOrientation as "portrait" | "square" | "landscape");
     return {
       success: true,
-      message: `Image generated (${safeOrientation}): "${prompt.substring(0, 80)}..."`,
+      message: `Image generated (${safeOrientation}): "${prompt}"`,
       attachment: { buffer: result.buffer, name: result.filename },
     };
   } catch (error) {

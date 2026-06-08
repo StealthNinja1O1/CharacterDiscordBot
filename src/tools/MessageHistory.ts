@@ -15,6 +15,7 @@ export interface HistoryMessage {
   createdAt: Date;
   member?: User | null;
   reactions?: ReactionInfo[];
+  hasAttachments?: boolean;
 }
 
 export interface ReferencedMessageInfo {
@@ -27,6 +28,7 @@ export interface FormattedMessage {
   content: string;
   createdAt: Date;
   reactions?: ReactionInfo[];
+  hasAttachments?: boolean;
 }
 
 /**
@@ -80,7 +82,8 @@ export async function fetchMessageHistory(message: Message, limit: number, botId
     const processed = await Promise.all(
       sortedMessages.map(async (msg) => {
         const hasStickers = msg.stickers.size > 0;
-        if (msg.author.bot && msg.content.trim() === "" && !hasStickers) return null;
+        const hasAttachments = msg.attachments.size > 0;
+        if (msg.author.bot && msg.content.trim() === "" && !hasStickers && !hasAttachments) return null;
 
         let processedContent = resolveMentions(msg.content);
 
@@ -108,6 +111,7 @@ export async function fetchMessageHistory(message: Message, limit: number, botId
           createdAt: msg.createdAt,
           member: msg.author,
           reactions: reactions.length > 0 ? reactions : undefined,
+          hasAttachments: msg.attachments.size > 0 || undefined,
         } as HistoryMessage;
       })
     );
@@ -138,6 +142,7 @@ export function formatMessagesForAI(
       content: content,
       createdAt: msg.createdAt,
       reactions: msg.reactions,
+      hasAttachments: msg.hasAttachments,
     };
   });
 }

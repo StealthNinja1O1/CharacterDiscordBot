@@ -1,4 +1,4 @@
-import { DEFAULT_PRESET, DiscordConfig, discordConfig } from "../config.js";
+import { DEFAULT_PRESET, DiscordConfig, discordConfig, comfyuiConfig } from "../config.js";
 import { Character, Message, AIRequestBody, ImageAttachment, CharacterBook, LorebookEntry } from "../models.js";
 import { ChatMemoryBook } from "./chatMemoryBook.js";
 import { processLorebook } from "./lorebook.js";
@@ -89,8 +89,7 @@ export async function buildAIRequest({
     }
 
     if (msg.role == "user") {
-      if (discordConfig.addTimestamps)
-        finaltext += `\n[${msg?.createdAt?.toISOString() || "unknown time"}]`;
+      if (discordConfig.addTimestamps) finaltext += `\n[${msg?.createdAt?.toISOString() || "unknown time"}]`;
 
       // Prepend reactions from the previous assistant message above this user message
       if (pendingAssistantReactions) {
@@ -100,10 +99,12 @@ export async function buildAIRequest({
 
       // Append reactions on this user message below it
       if (msg.reactions && msg.reactions.length > 0) {
-        const reactionStr = msg.reactions.map((r) => {
-          const names = r.userNames.filter(Boolean).join(", ");
-          return names ? `${r.emoji} by ${names}` : r.emoji;
-        }).join(", ");
+        const reactionStr = msg.reactions
+          .map((r) => {
+            const names = r.userNames.filter(Boolean).join(", ");
+            return names ? `${r.emoji} by ${names}` : r.emoji;
+          })
+          .join(", ");
         finaltext += `\n[Reactions: ${reactionStr}]`;
       }
     }
@@ -113,13 +114,40 @@ export async function buildAIRequest({
     if (msg.role == "assistant") {
       const prevMsg = index > 0 ? messages[index - 1] : null;
       const reconstructedCommands: Array<{ name: string; args: Record<string, string> }> = [];
+
+      // Reconstruct generateImage command if bot message has attachments,
+      if (msg.hasAttachments && comfyuiConfig.enabled) {
+        const text = finaltext.trim();
+        let imgPrompt = "[PROMPT HIDDEN]";
+        let imgOrientation = "square";
+
+        if (text.startsWith("image: ")) {
+          // Parse "image: prompt, orientation" format
+          const afterText = text.slice(2).trim();
+          const orientationMatch = afterText.match(/,\s*(portrait|square|landscape)\s*$/i);
+          if (orientationMatch) {
+            imgOrientation = orientationMatch[1].toLowerCase();
+            imgPrompt = afterText.slice(0, -orientationMatch[0].length).trim();
+          } else imgPrompt = afterText;
+        } else if (comfyuiConfig.includePromptInMessage)
+          // Prompt was supposed to be included but guess not
+          imgPrompt = "[PROMPT HIDDEN]";
+
+        reconstructedCommands.push({
+          name: "generateImage",
+          args: { prompt: imgPrompt, orientation: imgOrientation },
+        });
+      }
+
       finaltext = JSON.stringify({ reply: finaltext, commands: reconstructedCommands });
       // Show all reactions on bot messages as context for the next user message
       if (msg.reactions && msg.reactions.length > 0) {
-        pendingAssistantReactions = msg.reactions.map((r) => {
-          const names = r.userNames.filter(Boolean).join(", ");
-          return names ? `${r.emoji} by ${names}` : r.emoji;
-        }).join(", ");
+        pendingAssistantReactions = msg.reactions
+          .map((r) => {
+            const names = r.userNames.filter(Boolean).join(", ");
+            return names ? `${r.emoji} by ${names}` : r.emoji;
+          })
+          .join(", ");
       }
     }
     aiMessages.push({
@@ -193,10 +221,7 @@ export async function buildAIRequest({
   }
 
   // Merge both books into a single book for processLorebook (static first = higher priority)
-  const mergedEntries = [
-    ...(staticBook?.entries || []),
-    ...(chatMemoryBook?.entries || []),
-  ];
+  const mergedEntries = [...(staticBook?.entries || []), ...(chatMemoryBook?.entries || [])];
 
   if (mergedEntries.length > 0) {
     const mergedBook: CharacterBook = {
@@ -216,8 +241,7 @@ export async function buildAIRequest({
     if (list.length > 0)
       aiMessages[0].content +=
         "\n" + list.map((entry) => `Lorebook entry "${entry?.name}"; content: ${entry.content}`).join("\n ") + "\n";
-    else
-      aiMessages[0].content += "\nNo relevant lorebook entries triggered.";
+    else aiMessages[0].content += "\nNo relevant lorebook entries triggered.";
   } else {
     aiMessages[0].content += "\nNo relevant lorebook entries triggered.";
   }
@@ -341,6 +365,7 @@ export async function generateAIResponse(
       content: msg.content,
       createdAt: msg.createdAt,
       reactions: msg.reactions,
+      hasAttachments: msg.hasAttachments,
     }));
 
     const trimmedMessages = await trimMessagesToTokenBudget(

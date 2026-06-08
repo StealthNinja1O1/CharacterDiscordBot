@@ -94,6 +94,7 @@ export interface Message {
   variantIndex?: number;
   attachments?: ImageAttachment[];
   reactions?: ReactionInfo[];
+  hasAttachments?: boolean;
 }
 
 export interface AIRequestBody {

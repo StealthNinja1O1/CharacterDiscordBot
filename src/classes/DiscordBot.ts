@@ -1,5 +1,5 @@
 import { Client, GatewayIntentBits, Events, Message, AttachmentBuilder } from "discord.js";
-import { DiscordConfig, DEFAULT_PRESET } from "../config.js";
+import { DiscordConfig, DEFAULT_PRESET, comfyuiConfig } from "../config.js";
 import { Character } from "../models.js";
 import { readFileSync, existsSync } from "fs";
 import { executeBotCommands, executeInstantCommands, executeAsyncCommands, splitCommands } from "../utils/botCommandHandler.js";
@@ -294,7 +294,10 @@ export class DiscordBot {
         for (const result of asyncResults) {
           if (result.success && result.attachment) {
             const file = new AttachmentBuilder(result.attachment.buffer, { name: result.attachment.name });
-            await ctx.sendFollowUp("", [file]);
+            const followUpText = comfyuiConfig.includePromptInMessage && result.prompt
+              ? `image: ${result.prompt}, ${result.orientation ?? "square"}`
+              : "";
+            await ctx.sendFollowUp(followUpText, [file]);
             log.info(`Async command: ${result.message}`);
           } else if (result.success) {
             log.info(`Async command: ${result.message}`);

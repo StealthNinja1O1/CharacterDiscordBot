@@ -16,6 +16,8 @@ export interface AsyncCommandResult {
   success: boolean;
   message: string;
   attachment?: AttachmentData;
+  prompt?: string;
+  orientation?: string;
 }
 
 /** Commands that require async execution and produce follow-up results */
@@ -377,6 +379,8 @@ async function executeGenerateImage(
       success: true,
       message: `Image generated (${safeOrientation}): "${prompt}"`,
       attachment: { buffer: result.buffer, name: result.filename },
+      prompt,
+      orientation: safeOrientation,
     };
   } catch (error) {
     return {

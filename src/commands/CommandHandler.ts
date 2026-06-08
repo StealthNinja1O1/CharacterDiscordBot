@@ -23,6 +23,7 @@ import { executeBotCommands } from "../utils/botCommandHandler.js";
 import { splitCommands, executeInstantCommands, executeAsyncCommands } from "../utils/botCommandHandler.js";
 import { parseAIResponse } from "../utils/responseParser.js";
 import { generateResponse } from "../api/llm.js";
+import { comfyuiConfig } from "../config.js";
 import { fetchMessageHistory, formatMessagesForAI } from "../tools/MessageHistory.js";
 import { InteractionResponseContext } from "../utils/ResponseContexts.js";
 import { extractImagesFromMessage, extractStickerImagesFromMessage } from "../tools/MessageHistory.js";
@@ -234,7 +235,10 @@ export default class CommandHandler {
           for (const result of asyncResults) {
             if (result.success && result.attachment) {
               const file = new AttachmentBuilder(result.attachment.buffer, { name: result.attachment.name });
-              await ctx.sendFollowUp("", [file]);
+              const followUpText = comfyuiConfig.includePromptInMessage && result.prompt
+                ? `image: ${result.prompt}, ${result.orientation ?? "square"}`
+                : "";
+              await ctx.sendFollowUp(followUpText, [file]);
               log.info(`Async command: ${result.message}`);
             } else if (!result.success) {
               await ctx.sendFollowUp("*[The static interfered with the image generation...]*");
@@ -300,7 +304,10 @@ export default class CommandHandler {
         for (const result of asyncResults) {
           if (result.success && result.attachment) {
             const file = new AttachmentBuilder(result.attachment.buffer, { name: result.attachment.name });
-            await ctx.sendFollowUp("", [file]);
+            const followUpText = comfyuiConfig.includePromptInMessage && result.prompt
+              ? `image: ${result.prompt}, ${result.orientation ?? "square"}`
+              : "";
+            await ctx.sendFollowUp(followUpText, [file]);
             log.info(`Async command: ${result.message}`);
           } else if (!result.success) {
             await ctx.sendFollowUp("*[The static interfered with the image generation...]*");

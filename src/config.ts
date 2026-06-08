@@ -60,6 +60,7 @@ export interface ComfyUiConfig {
   pollIntervalMs: number;
   randomizeSeeds: boolean;
   stripMetadata: boolean;
+  includePromptInMessage: boolean;
   resolutions: {
     square: [number, number];
     portrait: [number, number];
@@ -124,6 +125,7 @@ const config: AppConfig = {
     pollIntervalMs: parseInt(String(parsed.comfyui?.poll_interval_ms ?? "2000"), 10),
     randomizeSeeds: parsed.comfyui?.randomize_seeds !== false,
     stripMetadata: parsed.comfyui?.strip_metadata === true,
+    includePromptInMessage: parsed.comfyui?.include_prompt_in_message === true,
     resolutions: {
       square: (parsed.comfyui?.resolutions?.square as [number, number]) ?? [1280, 1280],
       portrait: (parsed.comfyui?.resolutions?.portrait as [number, number]) ?? [1008, 1280],

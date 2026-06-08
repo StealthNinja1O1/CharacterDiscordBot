@@ -51,6 +51,7 @@ timeout_seconds = 120                           # Maximum time to wait for image
 poll_interval_ms = 2000                         # How often to poll for completion (in milliseconds)
 randomize_seeds = true                          # Randomize all seed inputs in the workflow for each generation
 strip_metadata = true                           # Strip prompt/workflow metadata from the generated PNG
+include_prompt_in_message = false               # Include the prompt text in the image follow-up message (shows image: prompt, orientation)
 
 [comfyui.resolutions]
 square = [1280, 1280]

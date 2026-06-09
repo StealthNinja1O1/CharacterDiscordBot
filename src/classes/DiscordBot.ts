@@ -10,14 +10,10 @@ import {
 import { DiscordConfig, DEFAULT_PRESET, comfyuiConfig } from "../config.js";
 import { Character } from "../models.js";
 import { readFileSync, existsSync } from "fs";
-import {
-  executeBotCommands,
-  executeInstantCommands,
-  executeAsyncCommands,
-  splitCommands,
-} from "../utils/botCommandHandler.js";
+import { executeInstantCommands, executeAsyncCommands } from "../utils/botCommandHandler.js";
 import { parseAIResponse } from "../utils/responseParser.js";
 import { generateAIResponse } from "../tools/prompt.js";
+import { processRecursiveCommands } from "../utils/recursiveCommandHandler.js";
 import {
   fetchReferencedMessage,
   extractImagesFromMessage,
@@ -251,7 +247,12 @@ export class DiscordBot {
       const stickerImages = await extractStickerImagesFromMessage(message);
       const allImages = [...currentImages, ...stickerImages, ...(referencedMsgInfo?.images || [])];
 
-      const response = await generateAIResponse(
+      const {
+        response,
+        messages: llmMessages,
+        model,
+        temperature,
+      } = await generateAIResponse(
         message,
         this.character,
         this.discordConfig,
@@ -262,16 +263,25 @@ export class DiscordBot {
       );
       log.debug(`Raw LLM response: ${response}`);
       const parsed = parseAIResponse(response);
-      const reply = parsed.reply;
       const ctx = new MessageResponseContext(message);
 
-      // Split commands into instant and async
+      // Run recursive commands (web search, fetch, research, crawl)
       const allCommands = parsed.commands || [];
-      const { instant, async: asyncCmds } = splitCommands(allCommands);
+      const { reply, remainingInstant, asyncCommands, replySent } = await processRecursiveCommands({
+        llmMessages,
+        model,
+        temperature,
+        initialResponse: response,
+        initialReply: parsed.reply,
+        commands: allCommands,
+        maxRecursionDepth: this.discordConfig.maxRecursionDepth,
+        addNothink: this.discordConfig.addNothink,
+        ctx,
+      });
 
-      // 1. Execute instant commands (react, rename, lorebook, sticker)
-      if (instant.length > 0) {
-        const instantResults = await executeInstantCommands(instant, {
+      // 1. Execute remaining instant commands (react, rename, lorebook, sticker, setBio)
+      if (remainingInstant.length > 0) {
+        const instantResults = await executeInstantCommands(remainingInstant, {
           message,
           character: this.character,
           characterFilePath: this.discordConfig.characterFilePath,
@@ -287,15 +297,16 @@ export class DiscordBot {
         }
       }
 
-      // 2. Send text reply immediately
+      // 2. Send final text reply (as follow-up if intermediate was already sent)
       if (reply && reply.trim()) {
-        await ctx.sendReply(reply);
+        if (replySent) await ctx.sendFollowUp(reply);
+        else await ctx.sendReply(reply);
       }
 
-      // 3. Execute async commands (generateImage) — typing continues during this
-      if (asyncCmds.length > 0) {
+      // 3. Execute async commands (generateImage), typing continues during this, although it stops for a few sec for no reason
+      if (asyncCommands.length > 0) {
         this.setGeneratingPresence();
-        const asyncResults = await executeAsyncCommands(asyncCmds, {
+        const asyncResults = await executeAsyncCommands(asyncCommands, {
           message,
           character: this.character,
           characterFilePath: this.discordConfig.characterFilePath,

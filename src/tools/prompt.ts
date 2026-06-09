@@ -10,6 +10,17 @@ import { countTokens } from "../utils/tokenCounter.js";
 import { log } from "../utils/logger.js";
 import { Collection, Message as DiscordMessage, GuildEmoji, Sticker, ActivityType } from "discord.js";
 
+/**
+ * Result of generateAIResponse, includes the LLM reply and the request context
+ * needed for followup re prompting (after web search)
+ */
+export interface GenerateAIResponseResult {
+  response: string;
+  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  model: string;
+  temperature: number;
+}
+
 interface Preset {
   name: string;
   prompt_template: string;
@@ -328,7 +339,7 @@ export async function generateAIResponse(
   replyContext?: string | null,
   images: ImageAttachment[] = [],
   chatMemoryBook?: ChatMemoryBook | null,
-): Promise<string> {
+): Promise<GenerateAIResponseResult> {
   try {
     const userDisplayName = message.author.displayName || message.author.username;
     const username = message.author.username;
@@ -426,11 +437,35 @@ export async function generateAIResponse(
 
     const response = await generateResponse(model, messages, temperature, config.addNothink, finalImages);
 
-    return response;
+    return { response, messages, model, temperature };
   } catch (error) {
     log.error("Error generating AI response:", error);
     throw error;
   }
+}
+
+/**
+ * Generate a followup LLM response after tool results (web search) are injected.
+ * Takes the existing messages from a prior LLM call, appends the assistant's previous
+ * reply and the tool results as a new user message, then calls the LLM again.
+ */
+export async function generateFollowUpResponse(
+  previousMessages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+  model: string,
+  temperature: number,
+  assistantReply: string,
+  toolResultContent: string,
+  noThink: boolean,
+): Promise<string> {
+  const messages = [
+    ...previousMessages,
+    { role: "assistant" as const, content: assistantReply },
+    { role: "user" as const, content: toolResultContent },
+  ];
+
+  log.debug(`Sending follow-up with ${messages.length} messages to LLM (${model})`);
+
+  return await generateResponse(model, messages, temperature, noThink);
 }
 
 /**

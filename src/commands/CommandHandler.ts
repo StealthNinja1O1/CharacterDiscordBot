@@ -28,6 +28,7 @@ import { fetchMessageHistory, formatMessagesForAI } from "../tools/MessageHistor
 import { InteractionResponseContext } from "../utils/ResponseContexts.js";
 import { extractImagesFromMessage, extractStickerImagesFromMessage } from "../tools/MessageHistory.js";
 import { describeImages, formatImageDescriptions } from "../api/vision.js";
+import { processRecursiveCommands } from "../utils/recursiveCommandHandler.js";
 
 export default class CommandHandler {
   private bot: DiscordBot;
@@ -161,11 +162,15 @@ export default class CommandHandler {
       await modalInt.deferReply();
 
       try {
-        const userName = targetMessage.author.username || targetMessage.author.displayName
+        const userName = targetMessage.author.username || targetMessage.author.displayName;
         const displayName = targetMessage.author.displayName || targetMessage.author.username;
         const userId = targetMessage.author.id;
 
-        const history = await fetchMessageHistory(targetMessage as any, config.maxHistoryMessages, this.bot.botDiscordId || null);
+        const history = await fetchMessageHistory(
+          targetMessage as any,
+          config.maxHistoryMessages,
+          this.bot.botDiscordId || null,
+        );
         const formattedHistory = formatMessagesForAI(history);
 
         // Extract images from the target message
@@ -190,31 +195,62 @@ export default class CommandHandler {
 
         formattedHistory.push({ role: "user", content: messageContent, createdAt: targetMessage.createdAt });
 
-        const allMessages = formattedHistory.map((m, i) => ({ id: `h-${i}`, role: m.role, content: m.content, createdAt: m.createdAt }));
+        const allMessages = formattedHistory.map((m, i) => ({
+          id: `h-${i}`,
+          role: m.role,
+          content: m.content,
+          createdAt: m.createdAt,
+        }));
         if (manualContext) {
-          allMessages.unshift({ id: "ctx-0", role: "user" as const, content: `[Context]: ${manualContext}`, createdAt: new Date() });
+          allMessages.unshift({
+            id: "ctx-0",
+            role: "user" as const,
+            content: `[Context]: ${manualContext}`,
+            createdAt: new Date(),
+          });
         }
 
-        const trimmed = await trimMessagesToTokenBudget(allMessages, this.bot.getCharacter(), userName, config.maxContextTokens);
-        const { model, messages, temperature } = await buildAIRequest({ character: this.bot.getCharacter(), messages: trimmed, userName });
+        const trimmed = await trimMessagesToTokenBudget(
+          allMessages,
+          this.bot.getCharacter(),
+          userName,
+          config.maxContextTokens,
+        );
+        const { model, messages, temperature } = await buildAIRequest({
+          character: this.bot.getCharacter(),
+          messages: trimmed,
+          userName,
+        });
         const raw = await generateResponse(model, messages, temperature, config.addNothink);
 
         const parsed = parseAIResponse(raw);
         const ctx = new InteractionResponseContext(modalInt);
 
-        // Split commands into instant and async
+        // Run recursive commands (web search, fetch, research, crawl)
         const allCommands = parsed.commands || [];
-        const { instant, async: asyncCmds } = splitCommands(allCommands);
+        const { reply, remainingInstant, asyncCommands, replySent } = await processRecursiveCommands({
+          llmMessages: messages,
+          model,
+          temperature,
+          initialResponse: raw,
+          initialReply: parsed.reply,
+          commands: allCommands,
+          maxRecursionDepth: config.maxRecursionDepth,
+          addNothink: config.addNothink,
+          ctx,
+        });
 
-        // Execute instant commands (react, rename, etc.)
-        if (instant.length > 0) {
-          const commandResults = await executeInstantCommands(instant, {
+        // Execute instant commands (react, rename, etc)
+        if (remainingInstant.length > 0) {
+          const commandResults = await executeInstantCommands(remainingInstant, {
             message: targetMessage as any,
             character: this.bot.getCharacter(),
             characterFilePath: config.characterFilePath,
             chatMemoryBook: this.bot.getChatMemoryBook(),
             chatMemoryBookPath: config.chatMemoryBookPath,
-            onChatMemoryUpdate: (book) => { this.bot.setChatMemoryBook(book); },
+            onChatMemoryUpdate: (book) => {
+              this.bot.setChatMemoryBook(book);
+            },
           });
           for (const result of commandResults) {
             if (result.success) log.info(`Command: ${result.message}`);
@@ -222,22 +258,24 @@ export default class CommandHandler {
           }
         }
 
-        // Send text reply
-        const finalReply = parsed.reply?.trim() || "*...*";
-        await ctx.sendReply(finalReply);
+        // Send text reply (as follow-up if intermediate was sent during recursion)
+        const finalReply = reply?.trim() || "*...*";
+        if (replySent) await ctx.sendFollowUp(finalReply);
+        else await ctx.sendReply(finalReply);
 
         // Execute async commands (generateImage)
-        if (asyncCmds.length > 0) {
-          const asyncResults = await executeAsyncCommands(asyncCmds, {
+        if (asyncCommands.length > 0) {
+          const asyncResults = await executeAsyncCommands(asyncCommands, {
             message: targetMessage as any,
             character: this.bot.getCharacter(),
           });
           for (const result of asyncResults) {
             if (result.success && result.attachment) {
               const file = new AttachmentBuilder(result.attachment.buffer, { name: result.attachment.name });
-              const followUpText = comfyuiConfig.includePromptInMessage && result.prompt
-                ? `image: ${result.prompt}, ${result.orientation ?? "square"}`
-                : "";
+              const followUpText =
+                comfyuiConfig.includePromptInMessage && result.prompt
+                  ? `image: ${result.prompt}, ${result.orientation ?? "square"}`
+                  : "";
               await ctx.sendFollowUp(followUpText, [file]);
               log.info(`Async command: ${result.message}`);
             } else if (!result.success) {
@@ -248,17 +286,22 @@ export default class CommandHandler {
         }
       } catch (err) {
         log.error("AskChar modal error:", err);
-        try { await modalInt.editReply("*Something went wrong... The static consumes my words.*"); } catch (_) {}
+        try {
+          await modalInt.editReply("*Something went wrong... The static consumes my words.*");
+        } catch (_) {}
       }
     };
 
     this.bot.getClient().on("interactionCreate", onModal);
 
     // Clean up if the modal is never submitted
-    const cleanupTimeout = setTimeout(() => {
-      this.pendingAskCharMessages.delete(interaction.id);
-      this.bot.getClient().removeListener("interactionCreate", onModal);
-    }, 5 * 60 * 1000);
+    const cleanupTimeout = setTimeout(
+      () => {
+        this.pendingAskCharMessages.delete(interaction.id);
+        this.bot.getClient().removeListener("interactionCreate", onModal);
+      },
+      5 * 60 * 1000,
+    );
   }
 
   private async handleAskCommand(cmd: ChatInputCommandInteraction) {
@@ -273,7 +316,14 @@ export default class CommandHandler {
     try {
       const { model, messages, temperature } = await buildAIRequest({
         character: this.bot.getCharacter(),
-        messages: [{ id: "ask-0", role: "user", content: `${displayName} (${userName} - ${userId}): ${prompt}`, createdAt: new Date() }],
+        messages: [
+          {
+            id: "ask-0",
+            role: "user",
+            content: `${displayName} (${userName} - ${userId}): ${prompt}`,
+            createdAt: new Date(),
+          },
+        ],
         userName,
       });
 
@@ -281,32 +331,46 @@ export default class CommandHandler {
       const parsed = parseAIResponse(raw);
       const ctx = new InteractionResponseContext(cmd);
 
-      // Split commands — instant commands need message context (skip them),
-      // but async commands like generateImage can run without one
+      // Run recursive commands (web search, fetch, research, crawl) with re-prompting
       const allCommands = parsed.commands || [];
-      const { instant, async: asyncCmds } = splitCommands(allCommands);
+      const { reply, remainingInstant, asyncCommands, replySent } = await processRecursiveCommands({
+        llmMessages: messages,
+        model,
+        temperature,
+        initialResponse: raw,
+        initialReply: parsed.reply,
+        commands: allCommands,
+        maxRecursionDepth: config.maxRecursionDepth,
+        addNothink: config.addNothink,
+        ctx,
+      });
 
       // Skip instant commands — no message context for reactions/renames
-      if (instant.length > 0) {
-        log.debug("Ask command cannot execute instant commands (no message context):", instant);
+      if (remainingInstant.length > 0) {
+        log.debug("Ask command cannot execute instant commands (no message context):", remainingInstant);
       }
 
-      // Send text reply
-      const finalReply = parsed.reply?.trim() || "*...*";
-      await ctx.sendReply(finalReply);
+      // Send text reply (as follow-up if intermediate was sent during recursion)
+      const finalReply = reply?.trim() || "*...*";
+      if (replySent) {
+        await ctx.sendFollowUp(finalReply);
+      } else {
+        await ctx.sendReply(finalReply);
+      }
 
       // Execute async commands (generateImage works without message context)
-      if (asyncCmds.length > 0) {
-        const asyncResults = await executeAsyncCommands(asyncCmds, {
+      if (asyncCommands.length > 0) {
+        const asyncResults = await executeAsyncCommands(asyncCommands, {
           message: null as any, // async commands don't need message context
           character: this.bot.getCharacter(),
         });
         for (const result of asyncResults) {
           if (result.success && result.attachment) {
             const file = new AttachmentBuilder(result.attachment.buffer, { name: result.attachment.name });
-            const followUpText = comfyuiConfig.includePromptInMessage && result.prompt
-              ? `image: ${result.prompt}, ${result.orientation ?? "square"}`
-              : "";
+            const followUpText =
+              comfyuiConfig.includePromptInMessage && result.prompt
+                ? `image: ${result.prompt}, ${result.orientation ?? "square"}`
+                : "";
             await ctx.sendFollowUp(followUpText, [file]);
             log.info(`Async command: ${result.message}`);
           } else if (!result.success) {
@@ -350,7 +414,7 @@ export default class CommandHandler {
         mesExample: parsed.data.mes_example || "",
         depthPrompt: parsed.data?.extensions?.depth_prompt || null,
         character_book: parsed.data?.character_book || null,
-        chatMemoryBook: null, 
+        chatMemoryBook: null,
       };
 
       // Save to configured character file path (default behavior)
@@ -396,7 +460,7 @@ export default class CommandHandler {
             ...slice.map((e: LorebookEntry, idx: number) => ({
               label: (e.name || "(unnamed)").slice(0, 100),
               value: String(start + idx),
-            }))
+            })),
           );
 
         const row1 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
@@ -846,7 +910,7 @@ export default class CommandHandler {
       }\nMAX_HISTORY_MESSAGES=${config.maxHistoryMessages}\nMAX_CONTEXT_TOKENS=${
         config.maxContextTokens
       }\nIGNORE_OTHER_BOTS=${config.ignoreOtherBots}\nTRIGGER_KEYWORDS=${config.triggerKeywords.join(
-        ","
+        ",",
       )}\nADD_TIMESTAMPS=${config.addTimestamps}\nMIN_RESPONSE_INTERVAL_SECONDS=${config.minResponseIntervalSeconds}`,
       ephemeral: true,
     });

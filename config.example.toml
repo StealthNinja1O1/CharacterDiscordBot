@@ -27,6 +27,7 @@ min_response_interval_seconds = 0               # Minimum seconds between respon
 add_nothink = false                             # Adds disable-thinking tag for models that support it
 enable_user_status = false                      # Show user Discord status/activities in context (requires Presence Intent)
 allow_renaming = false                          # Allow the bot to rename itself and others via commands
+max_recursion_depth = 2                         # Max LLM turns per message (original + re-prompts). Prevents infinite web search loops.
 
 # --- Bot Presence / Activity Status ---
 # All fields are optional and have sensible defaults shown below.
@@ -70,3 +71,11 @@ include_prompt_in_message = false               # Include the prompt text in the
 square = [1280, 1280]
 portrait = [1008, 1280]
 landscape = [1280, 1008]
+
+# --- SearXNG Web Search (via Miyami API) ---
+[searxng]
+enabled = false                                 # Enable web search tools
+base_url = "https://websearch.miyami.tech"      # Miyami API base URL (self-host: docker run -p 8080:8080 searxng-api)
+language = "auto"                               # Search language (e.g. "en", "de", "auto" for default)
+max_results = 5                                # Number of search results to include in LLM context
+auto_bypass = true                             # Auto-escalate stealth levels if blocked by websites

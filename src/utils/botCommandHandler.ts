@@ -156,6 +156,15 @@ async function executeCommand(
     case "setBio":
       return await executeSetBio(cmd.args as any, message);
 
+    // Recursive commands are handled by DiscordBot's recursion loop
+    // if they leak through here return a message instead of "Unknown command"
+    case "webSearch":
+    case "fetchWebpage":
+    case "searchAndFetch":
+    case "deepResearch":
+    case "crawlSite":
+      return { success: false, message: `${cmd.name} should be handled by the recursion loop (searxng not enabled or max depth reached)` };
+
     default:
       return { success: false, message: `Unknown command: ${cmd.name}` };
   }

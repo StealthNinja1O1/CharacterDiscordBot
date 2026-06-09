@@ -37,6 +37,7 @@ export interface DiscordConfig {
   enableUserStatus: boolean;
   chatMemoryBookPath: string;
   status: BotStatusConfig;
+  maxRecursionDepth: number;
 }
 
 export interface VisionConfig {
@@ -51,6 +52,14 @@ export interface BehaviorConfig {
   characterFilePath: string;
   chatMemoryBookPath: string;
   logLevel: string;
+}
+
+export interface SearxngConfig {
+  enabled: boolean;
+  baseUrl: string;
+  language: string;
+  maxResults: number;
+  autoBypass: boolean;
 }
 
 export interface BotStatusConfig {
@@ -85,6 +94,7 @@ export interface AppConfig {
   vision: VisionConfig;
   behavior: BehaviorConfig;
   comfyui: ComfyUiConfig;
+  searxng: SearxngConfig;
 }
 
 // ============================================================
@@ -177,6 +187,15 @@ const config: AppConfig = {
       disabledType: parsed.discord?.status?.disabled_type ?? "Playing",
       disabledStatus: parsed.discord?.status?.disabled_status ?? "idle",
     },
+    maxRecursionDepth: parseInt(String(parsed.discord?.max_recursion_depth ?? "2"), 10),
+  },
+
+  searxng: {
+    enabled: parsed.searxng?.enabled === true,
+    baseUrl: parsed.searxng?.base_url ?? "",
+    language: parsed.searxng?.language ?? "auto",
+    maxResults: parseInt(String(parsed.searxng?.max_results ?? "5"), 10),
+    autoBypass: parsed.searxng?.auto_bypass !== false,
   },
 };
 
@@ -212,6 +231,7 @@ export const llmConfig = config.llm;
 export const visionConfig = config.vision;
 export const behaviorConfig = config.behavior;
 export const comfyuiConfig = config.comfyui;
+export const searxngConfig = config.searxng;
 
 // ============================================================
 // Available Commands (injected into LLM system prompt)
@@ -263,6 +283,41 @@ export const availableCommands = [
     args: { bio: "string (max 190 characters)" },
     description: `Set {{char}}'s about me / bio text on their server profile`,
     enabled: config.discord.allowRenaming,
+  },
+  {
+    name: "webSearch",
+    args: { query: "string" },
+    description: `Search the web for information using a search engine. Use this when you need factual information you are not sure about, need to look something up, or want to verify facts. Your reply before this command will be sent first, then you will receive search results and can give an informed follow-up answer.`,
+    enabled: config.searxng.enabled,
+    isRecursive: true,
+  },
+  {
+    name: "fetchWebpage",
+    args: { url: "string" },
+    description: `Fetch and extract the full content of a specific webpage in markdown format. Use when you have a URL and need the actual page content, not just a search snippet. Good for reading articles, documentation, or reference pages.`,
+    enabled: config.searxng.enabled,
+    isRecursive: true,
+  },
+  {
+    name: "searchAndFetch",
+    args: { query: "string", num_results: "number (1-5, default 3)" },
+    description: `Search the web AND fetch full page content from the top results. More thorough than webSearch (which only returns snippets). Use when you need detailed information from multiple sources. Slower but much more comprehensive.`,
+    enabled: config.searxng.enabled,
+    isRecursive: true,
+  },
+  {
+    name: "deepResearch",
+    args: { queries: ["query1", "query2", "..."] },
+    description: `Perform deep multi-query research in parallel. Provide up to 10 search queries and get a compiled research report. Best for complex topics that need multiple angles. Slowest but most thorough option.`,
+    enabled: config.searxng.enabled,
+    isRecursive: true,
+  },
+  {
+    name: "crawlSite",
+    args: { start_url: "string", max_pages: "number (1-200, default 5)", max_depth: "number (0-5, default 1)" },
+    description: `Crawl an entire website recursively and extract content from multiple pages. Use for documentation sites, wikis, or when you need comprehensive info from a single source. Very slow — use only when really needed.`,
+    enabled: config.searxng.enabled,
+    isRecursive: true,
   },
 ];
 

@@ -28,6 +28,19 @@ add_nothink = false                             # Adds disable-thinking tag for 
 enable_user_status = false                      # Show user Discord status/activities in context (requires Presence Intent)
 allow_renaming = false                          # Allow the bot to rename itself and others via commands
 
+# --- Bot Presence / Activity Status ---
+# All fields are optional and have sensible defaults shown below.
+# Uncomment and edit to customize.
+#
+# [discord.status]
+# generating_text = "painting a masterpiece"     # Activity text while generating an image
+# generating_type = "Playing"                   # Activity type: Playing, Streaming, Listening, Watching, Competing
+# idle_text = ""                                 # Activity text when idle (empty = no activity shown)
+# idle_type = "Playing"                          # Activity type for idle state
+# disabled_text = "on hiatus"                    # Activity text when bot is toggled off via /togglebot
+# disabled_type = "Playing"                      # Activity type for disabled state
+# disabled_status = "idle"                       # Online status when disabled: online, idle, dnd, invisible
+
 # --- External Vision Model ---
 [vision]
 enabled = false                                 # Enable image vision support for multimodal models

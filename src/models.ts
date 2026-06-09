@@ -115,6 +115,7 @@ export type BotCommand =
   | { name: "editOrAddToLorebook"; args: { entryName: string; keywords: string[]; content: string } }
   | { name: "postSticker"; args: { stickerName: string } }
   | { name: "generateImage"; args: { prompt: string; orientation?: "portrait" | "square" | "landscape" } }
+  | { name: "setBio"; args: { bio: string } }
   | { name: string; args: Record<string, any> }; // fallback for unknown commands
 
 export interface AIResponse {

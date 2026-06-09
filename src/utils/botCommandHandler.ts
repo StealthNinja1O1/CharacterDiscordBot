@@ -153,6 +153,9 @@ async function executeCommand(
     case "postSticker":
       return await executePostSticker(cmd.args as any, message);
 
+    case "setBio":
+      return await executeSetBio(cmd.args as any, message);
+
     default:
       return { success: false, message: `Unknown command: ${cmd.name}` };
   }
@@ -222,6 +225,48 @@ async function executeRenameSelf(
     return {
       success: false,
       message: `Failed to rename: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * Set the bot's about me / bio text on the server profile.
+ * Uses the Discord REST API directly since discord.js has no GuildMember.setBio() method, fuck you discord for hiding this shit
+ * @param args.bio - The new bio text (max 190 characters)
+ */
+async function executeSetBio(
+  args: { bio: string },
+  message: Message,
+): Promise<CommandResult> {
+  if (!discordConfig.allowRenaming) return { success: false, message: "Profile editing is disabled" };
+
+  const { bio } = args;
+
+  if (!bio || typeof bio !== "string") return { success: false, message: "Invalid bio argument" };
+  if (bio.length > 190) return { success: false, message: `Bio is too long (${bio.length}/190 characters)` };
+
+  if (!message.guild) return { success: false, message: "Cannot set bio outside of a server" };
+
+  try {
+    const response = await fetch(`https://discord.com/api/v10/guilds/${message.guild.id}/members/@me`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bot ${discordConfig.botToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ bio }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      return { success: false, message: `Failed to set bio (HTTP ${response.status}): ${errorText}` };
+    }
+
+    return { success: true, message: `Updated bio to: "${bio.slice(0, 80)}${bio.length > 80 ? "..." : ""}"` };
+  } catch (error) {
+    return {
+      success: false,
+      message: `Failed to set bio: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }

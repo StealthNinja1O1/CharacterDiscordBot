@@ -36,6 +36,7 @@ export interface DiscordConfig {
   allowRenaming: boolean;
   enableUserStatus: boolean;
   chatMemoryBookPath: string;
+  status: BotStatusConfig;
 }
 
 export interface VisionConfig {
@@ -50,6 +51,16 @@ export interface BehaviorConfig {
   characterFilePath: string;
   chatMemoryBookPath: string;
   logLevel: string;
+}
+
+export interface BotStatusConfig {
+  generatingText: string;
+  generatingType: string;
+  idleText: string | null;
+  idleType: string;
+  disabledText: string;
+  disabledType: string;
+  disabledStatus: string;
 }
 
 export interface ComfyUiConfig {
@@ -157,6 +168,15 @@ const config: AppConfig = {
     allowLorebookEditing: parsed.behavior?.allow_lorebook_editing === true,
     characterFilePath: parsed.behavior?.character_file_path ?? "./character.json",
     chatMemoryBookPath: parsed.behavior?.chat_memory_book_path ?? "./chatMemory.json",
+    status: {
+      generatingText: parsed.discord?.status?.generating_text ?? "images getting created",
+      generatingType: parsed.discord?.status?.generating_type ?? "Watching",
+      idleText: parsed.discord?.status?.idle_text ?? null,
+      idleType: parsed.discord?.status?.idle_type ?? "Playing",
+      disabledText: parsed.discord?.status?.disabled_text ?? "on hiatus",
+      disabledType: parsed.discord?.status?.disabled_type ?? "Playing",
+      disabledStatus: parsed.discord?.status?.disabled_status ?? "idle",
+    },
   },
 };
 
@@ -237,6 +257,12 @@ export const availableCommands = [
     args: { prompt: "string", orientation: "portrait | square | landscape (default: square)" },
     description: `Generate an image using the image generator. Provide a descriptive prompt and choose orientation. The image will be sent as a follow-up message. Use Booru style tags like "1girl, smile, blue hair, medium breasts, cowboy shot, dark, simple background" etc. natural language does not work as well.`,
     enabled: config.comfyui.enabled,
+  },
+  {
+    name: "setBio",
+    args: { bio: "string (max 190 characters)" },
+    description: `Set {{char}}'s about me / bio text on their server profile`,
+    enabled: config.discord.allowRenaming,
   },
 ];
 

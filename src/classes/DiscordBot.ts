@@ -1,8 +1,21 @@
-import { Client, GatewayIntentBits, Events, Message, AttachmentBuilder } from "discord.js";
+import {
+  Client,
+  GatewayIntentBits,
+  Events,
+  Message,
+  AttachmentBuilder,
+  ActivityType,
+  PresenceStatusData,
+} from "discord.js";
 import { DiscordConfig, DEFAULT_PRESET, comfyuiConfig } from "../config.js";
 import { Character } from "../models.js";
 import { readFileSync, existsSync } from "fs";
-import { executeBotCommands, executeInstantCommands, executeAsyncCommands, splitCommands } from "../utils/botCommandHandler.js";
+import {
+  executeBotCommands,
+  executeInstantCommands,
+  executeAsyncCommands,
+  splitCommands,
+} from "../utils/botCommandHandler.js";
 import { parseAIResponse } from "../utils/responseParser.js";
 import { generateAIResponse } from "../tools/prompt.js";
 import {
@@ -281,6 +294,7 @@ export class DiscordBot {
 
       // 3. Execute async commands (generateImage) — typing continues during this
       if (asyncCmds.length > 0) {
+        this.setGeneratingPresence();
         const asyncResults = await executeAsyncCommands(asyncCmds, {
           message,
           character: this.character,
@@ -294,9 +308,10 @@ export class DiscordBot {
         for (const result of asyncResults) {
           if (result.success && result.attachment) {
             const file = new AttachmentBuilder(result.attachment.buffer, { name: result.attachment.name });
-            const followUpText = comfyuiConfig.includePromptInMessage && result.prompt
-              ? `image: ${result.prompt}, ${result.orientation ?? "square"}`
-              : "";
+            const followUpText =
+              comfyuiConfig.includePromptInMessage && result.prompt
+                ? `image: ${result.prompt}, ${result.orientation ?? "square"}`
+                : "";
             await ctx.sendFollowUp(followUpText, [file]);
             log.info(`Async command: ${result.message}`);
           } else if (result.success) {
@@ -306,11 +321,13 @@ export class DiscordBot {
             log.warn(`Async command failed: ${result.message}`);
           }
         }
+        this.setIdlePresence();
       }
 
       if (typingInterval) clearInterval(typingInterval);
     } catch (error) {
       if (typingInterval) clearInterval(typingInterval);
+      this.setIdlePresence();
 
       log.error("Error handling message:", error);
       try {
@@ -383,6 +400,8 @@ export class DiscordBot {
 
   public toggleRuntime(): boolean {
     this.runtimeEnabled = !this.runtimeEnabled;
+    if (this.runtimeEnabled) this.setIdlePresence();
+    else this.setDisabledPresence();
     return this.runtimeEnabled;
   }
 
@@ -392,5 +411,76 @@ export class DiscordBot {
 
   public async stop() {
     await this.client.destroy();
+  }
+
+  private activityTypeFromString(type: string): ActivityType {
+    switch (type.toLowerCase()) {
+      case "playing":
+        return ActivityType.Playing;
+      case "streaming":
+        return ActivityType.Streaming;
+      case "listening":
+        return ActivityType.Listening;
+      case "watching":
+        return ActivityType.Watching;
+      case "competing":
+        return ActivityType.Competing;
+      default:
+        return ActivityType.Playing;
+    }
+  }
+
+  private setBotPresence(data: { activities: { name: string; type: ActivityType }[]; status: PresenceStatusData }) {
+    try {
+      this.client.user?.setPresence(data);
+    } catch (err) {
+      log.warn("Failed to set bot presence:", err);
+    }
+  }
+
+  private setGeneratingPresence() {
+    const { status } = this.discordConfig;
+    this.setBotPresence({
+      activities: [
+        {
+          name: status.generatingText,
+          type: this.activityTypeFromString(status.generatingType),
+        },
+      ],
+      status: "dnd",
+    });
+  }
+
+  private setIdlePresence() {
+    const { status } = this.discordConfig;
+    if (status.idleText && status.idleText.trim()) {
+      this.setBotPresence({
+        activities: [
+          {
+            name: status.idleText,
+            type: this.activityTypeFromString(status.idleType),
+          },
+        ],
+        status: "online",
+      });
+    } else {
+      this.setBotPresence({
+        activities: [],
+        status: "online",
+      });
+    }
+  }
+
+  private setDisabledPresence() {
+    const { status } = this.discordConfig;
+    this.setBotPresence({
+      activities: [
+        {
+          name: status.disabledText,
+          type: this.activityTypeFromString(status.disabledType),
+        },
+      ],
+      status: status.disabledStatus as PresenceStatusData,
+    });
   }
 }

@@ -2,6 +2,7 @@ import { Message, User } from "discord.js";
 import sharp from "sharp";
 import { ImageAttachment, ReactionInfo } from "../models.js";
 import { log } from "../utils/logger.js";
+import { commandMetadataStore } from "./commandMetadata.js";
 
 /** Max dimension for compressed images (fits within this box, aspect ratio preserved). ~2MP max. */
 const MAX_IMAGE_DIMENSION = 1600;
@@ -24,6 +25,7 @@ export interface ReferencedMessageInfo {
 }
 
 export interface FormattedMessage {
+  id: string;
   role: "user" | "assistant";
   content: string;
   createdAt: Date;
@@ -116,7 +118,13 @@ export async function fetchMessageHistory(message: Message, limit: number, botId
       })
     );
 
-    return processed.filter((m): m is HistoryMessage => m !== null);
+    const result = processed.filter((m): m is HistoryMessage => m !== null);
+
+    // Cleanup command metadata for messages no longer in this channel's context
+    const activeIds = new Set(result.map((m) => m.id));
+    commandMetadataStore.cleanupByChannel(message.channelId, activeIds);
+
+    return result;
   } catch (error) {
     log.error("Error fetching message history:", error);
     return [];
@@ -138,6 +146,7 @@ export function formatMessagesForAI(
     if (msg.role === "user") content = `${userDisplayName} (${username} - ${userId}): ${content}`;
 
     return {
+      id: msg.id,
       role: msg.role,
       content: content,
       createdAt: msg.createdAt,

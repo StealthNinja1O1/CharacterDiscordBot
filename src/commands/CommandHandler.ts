@@ -29,6 +29,7 @@ import { InteractionResponseContext } from "../utils/ResponseContexts.js";
 import { extractImagesFromMessage, extractStickerImagesFromMessage } from "../tools/MessageHistory.js";
 import { describeImages, formatImageDescriptions } from "../api/vision.js";
 import { processRecursiveCommands } from "../utils/recursiveCommandHandler.js";
+import { commandMetadataStore } from "../tools/commandMetadata.js";
 
 export default class CommandHandler {
   private bot: DiscordBot;
@@ -193,10 +194,10 @@ export default class CommandHandler {
           ? `${displayName} (${userName} - ${userId}): ${imageDescriptionText}${targetContent ? "\n" + targetContent : ""}`
           : `${displayName} (${userName} - ${userId}): ${targetContent}`;
 
-        formattedHistory.push({ role: "user", content: messageContent, createdAt: targetMessage.createdAt });
+        formattedHistory.push({ id: targetMessage.id, role: "user", content: messageContent, createdAt: targetMessage.createdAt });
 
-        const allMessages = formattedHistory.map((m, i) => ({
-          id: `h-${i}`,
+        const allMessages = formattedHistory.map((m) => ({
+          id: m.id,
           role: m.role,
           content: m.content,
           createdAt: m.createdAt,
@@ -228,7 +229,7 @@ export default class CommandHandler {
 
         // Run recursive commands (web search, fetch, research, crawl)
         const allCommands = parsed.commands || [];
-        const { reply, remainingInstant, asyncCommands, replySent } = await processRecursiveCommands({
+        const { reply, remainingInstant, asyncCommands, finalCommands, replySent } = await processRecursiveCommands({
           llmMessages: messages,
           model,
           temperature,
@@ -237,6 +238,7 @@ export default class CommandHandler {
           commands: allCommands,
           maxRecursionDepth: config.maxRecursionDepth,
           addNothink: config.addNothink,
+          channelId: targetMessage.channelId,
           ctx,
         });
 
@@ -260,8 +262,8 @@ export default class CommandHandler {
 
         // Send text reply (as follow-up if intermediate was sent during recursion)
         const finalReply = reply?.trim() || "*...*";
-        if (replySent) await ctx.sendFollowUp(finalReply);
-        else await ctx.sendReply(finalReply);
+        const finalMsgId = replySent ? await ctx.sendFollowUp(finalReply) : await ctx.sendReply(finalReply);
+        commandMetadataStore.record(finalMsgId, targetMessage.channelId, finalCommands);
 
         // Execute async commands (generateImage)
         if (asyncCommands.length > 0) {
@@ -333,7 +335,7 @@ export default class CommandHandler {
 
       // Run recursive commands (web search, fetch, research, crawl) with re-prompting
       const allCommands = parsed.commands || [];
-      const { reply, remainingInstant, asyncCommands, replySent } = await processRecursiveCommands({
+      const { reply, remainingInstant, asyncCommands, finalCommands, replySent } = await processRecursiveCommands({
         llmMessages: messages,
         model,
         temperature,
@@ -342,6 +344,7 @@ export default class CommandHandler {
         commands: allCommands,
         maxRecursionDepth: config.maxRecursionDepth,
         addNothink: config.addNothink,
+        channelId: cmd.channelId,
         ctx,
       });
 
@@ -352,11 +355,8 @@ export default class CommandHandler {
 
       // Send text reply (as follow-up if intermediate was sent during recursion)
       const finalReply = reply?.trim() || "*...*";
-      if (replySent) {
-        await ctx.sendFollowUp(finalReply);
-      } else {
-        await ctx.sendReply(finalReply);
-      }
+      const finalMsgId = replySent ? await ctx.sendFollowUp(finalReply) : await ctx.sendReply(finalReply);
+      commandMetadataStore.record(finalMsgId, cmd.channelId, finalCommands);
 
       // Execute async commands (generateImage works without message context)
       if (asyncCommands.length > 0) {

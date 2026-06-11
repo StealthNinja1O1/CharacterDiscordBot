@@ -1,4 +1,4 @@
-import { DEFAULT_PRESET, DiscordConfig, discordConfig, comfyuiConfig } from "../config.js";
+import { DEFAULT_PRESET, DiscordConfig, discordConfig } from "../config.js";
 import { Character, Message, AIRequestBody, ImageAttachment, CharacterBook, LorebookEntry } from "../models.js";
 import { ChatMemoryBook } from "./chatMemoryBook.js";
 import { processLorebook } from "./lorebook.js";
@@ -8,6 +8,7 @@ import { describeImages, formatImageDescriptions } from "../api/vision.js";
 import { fetchMessageHistory, formatMessagesForAI } from "./MessageHistory.js";
 import { countTokens } from "../utils/tokenCounter.js";
 import { log } from "../utils/logger.js";
+import { commandMetadataStore } from "./commandMetadata.js";
 import { Collection, Message as DiscordMessage, GuildEmoji, Sticker, ActivityType } from "discord.js";
 
 /**
@@ -121,36 +122,11 @@ export async function buildAIRequest({
     }
 
     // ensure assistant messages are valid json, so it keeps using this format.
-    // Reconstruct bot reactions from the preceding user message into the commands array.
+    // Look up stored commands from metadata, or use empty array.
     if (msg.role == "assistant") {
-      const prevMsg = index > 0 ? messages[index - 1] : null;
-      const reconstructedCommands: Array<{ name: string; args: Record<string, string> }> = [];
+      const storedCommands = commandMetadataStore.lookup(msg.id) || [];
+      finaltext = JSON.stringify({ reply: finaltext, commands: storedCommands });
 
-      // Reconstruct generateImage command if bot message has attachments,
-      if (msg.hasAttachments && comfyuiConfig.enabled) {
-        const text = finaltext.trim();
-        let imgPrompt = "[PROMPT HIDDEN]";
-        let imgOrientation = "square";
-
-        if (text.startsWith("image: ")) {
-          // Parse "image: prompt, orientation" format
-          const afterText = text.slice(2).trim();
-          const orientationMatch = afterText.match(/,\s*(portrait|square|landscape)\s*$/i);
-          if (orientationMatch) {
-            imgOrientation = orientationMatch[1].toLowerCase();
-            imgPrompt = afterText.slice(0, -orientationMatch[0].length).trim();
-          } else imgPrompt = afterText;
-        } else if (comfyuiConfig.includePromptInMessage)
-          // Prompt was supposed to be included but guess not
-          imgPrompt = "[PROMPT HIDDEN]";
-
-        reconstructedCommands.push({
-          name: "generateImage",
-          args: { prompt: imgPrompt, orientation: imgOrientation },
-        });
-      }
-
-      finaltext = JSON.stringify({ reply: finaltext, commands: reconstructedCommands });
       // Show all reactions on bot messages as context for the next user message
       if (msg.reactions && msg.reactions.length > 0) {
         pendingAssistantReactions = msg.reactions
@@ -365,13 +341,14 @@ export async function generateAIResponse(
     };
 
     formattedHistory.push({
+      id: message.id,
       role: "user",
       content: `${userDisplayName} (${username} - ${userId}): ${processedContent}\n${userPresence ? `[User presence:${userPresence}]` : ""}`,
       createdAt: message.createdAt,
     });
 
-    const allMessages: Message[] = formattedHistory.map((msg, index) => ({
-      id: `msg-${index}`,
+    const allMessages: Message[] = formattedHistory.map((msg) => ({
+      id: msg.id,
       role: msg.role,
       content: msg.content,
       createdAt: msg.createdAt,
@@ -432,7 +409,7 @@ export async function generateAIResponse(
 
     // log last 5 messages
     // for (let i = Math.max(messages.length - 5, 0); i < messages.length; i++) {
-    //   log.debug(`Message ${i + 1}/${messages.length} - Role: ${messages[i].role}, Content: ${messages[i].content.substring(0, 100)}...`);
+    //   log.debug(`Message ${i + 1}/${messages.length} - Role: ${messages[i].role}, Content: ${messages[i].content}`);
     // }
 
     const response = await generateResponse(model, messages, temperature, config.addNothink, finalImages);

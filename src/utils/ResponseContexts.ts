@@ -10,10 +10,13 @@ export interface AttachmentData {
  *
  * Regular messages use reply() then channel.send()
  * Interactions use editReply() then followUp()
+ *
+ * sendReply and sendFollowUp return the Discord message ID of the first sent message,
+ * or undefined if nothing was sent (empty content).
  */
 export interface ResponseContext {
-  sendReply(content: string): Promise<void>;
-  sendFollowUp(content: string, files?: AttachmentBuilder[]): Promise<void>;
+  sendReply(content: string): Promise<string | undefined>;
+  sendFollowUp(content: string, files?: AttachmentBuilder[]): Promise<string | undefined>;
 }
 
 /**
@@ -23,18 +26,24 @@ export interface ResponseContext {
 export class MessageResponseContext implements ResponseContext {
   constructor(private message: Message) {}
 
-  async sendReply(content: string): Promise<void> {
-    if (!content?.trim()) return;
+  async sendReply(content: string): Promise<string | undefined> {
+    if (!content?.trim()) return undefined;
     const chunks = content.match(/[\s\S]{1,2000}/g) || [];
-    for (const chunk of chunks) await this.message.reply(chunk);
+    let firstId: string | undefined;
+    for (let i = 0; i < chunks.length; i++) {
+      const sent = await this.message.reply(chunks[i]!);
+      if (i === 0) firstId = sent.id;
+    }
+    return firstId;
   }
 
-  async sendFollowUp(content: string, files?: AttachmentBuilder[]): Promise<void> {
+  async sendFollowUp(content: string, files?: AttachmentBuilder[]): Promise<string | undefined> {
     const channel = this.message.channel as import("discord.js").TextChannel;
-    await channel.send({
+    const sent = await channel.send({
       content: content || undefined,
       files: files?.length ? files : undefined,
     });
+    return sent.id;
   }
 }
 
@@ -53,17 +62,20 @@ export class InteractionResponseContext implements ResponseContext {
         },
   ) {}
 
-  async sendReply(content: string): Promise<void> {
-    if (!content?.trim()) return;
+  async sendReply(content: string): Promise<string | undefined> {
+    if (!content?.trim()) return undefined;
     const chunks = content.match(/[\s\S]{1,2000}/g) || [content];
-    await this.interaction.editReply(chunks[0]!);
+    const first = await this.interaction.editReply(chunks[0]!);
+    const firstId = first?.id;
     for (let i = 1; i < chunks.length; i++) await this.interaction.followUp({ content: chunks[i]! });
+    return firstId;
   }
 
-  async sendFollowUp(content: string, files?: AttachmentBuilder[]): Promise<void> {
-    await this.interaction.followUp({
+  async sendFollowUp(content: string, files?: AttachmentBuilder[]): Promise<string | undefined> {
+    const sent = await this.interaction.followUp({
       content: content || undefined,
       files: files?.length ? files : undefined,
     });
+    return sent?.id;
   }
 }

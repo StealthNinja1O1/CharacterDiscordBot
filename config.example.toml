@@ -54,6 +54,7 @@ base_url = ""                                   # Optional, falls back to llm.ba
 allow_lorebook_editing = false                  # Allow the character to create/update memory book entries
 character_file_path = "./character.json"        # Path to the character card JSON file
 chat_memory_book_path = "./chatMemory.json"     # Path to the dynamic memory book (auto-created)
+command_metadata_path = "./command_metadata.json" # Path to command metadata (auto-created, stores bot commands for history reconstruction)
 log_level = "INFO"                              # Log level: DEBUG, INFO, WARN, ERROR
 
 # --- ComfyUI Image Generation ---

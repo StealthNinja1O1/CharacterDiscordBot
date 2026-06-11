@@ -3,6 +3,7 @@ import { DiscordBot } from "./classes/DiscordBot.js";
 import { Character } from "./models.js";
 import { readFileSync, writeFileSync } from "fs";
 import { log } from "./utils/logger.js";
+import { commandMetadataStore } from "./tools/commandMetadata.js";
 
 const defaultOnUpdate = async (character: Character) => {
   try {
@@ -29,6 +30,9 @@ const defaultOnUpdate = async (character: Character) => {
     throw error;
   }
 };
+
+// Load command metadata from disk
+commandMetadataStore.load();
 
 const bot = new DiscordBot({
   discordConfig,

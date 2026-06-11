@@ -51,6 +51,7 @@ export interface BehaviorConfig {
   allowLorebookEditing: boolean;
   characterFilePath: string;
   chatMemoryBookPath: string;
+  commandMetadataPath: string;
   logLevel: string;
 }
 
@@ -135,6 +136,7 @@ const config: AppConfig = {
     allowLorebookEditing: parsed.behavior?.allow_lorebook_editing === true,
     characterFilePath: parsed.behavior?.character_file_path ?? "./character.json",
     chatMemoryBookPath: parsed.behavior?.chat_memory_book_path ?? "./chatMemory.json",
+    commandMetadataPath: parsed.behavior?.command_metadata_path ?? "./command_metadata.json",
     logLevel: parsed.behavior?.log_level ?? "INFO",
   },
 

@@ -4,6 +4,7 @@ import { ResponseContext } from "./ResponseContexts.js";
 import { splitCommands } from "./botCommandHandler.js";
 import { generateFollowUpResponse } from "../tools/prompt.js";
 import { parseAIResponse } from "../utils/responseParser.js";
+import { commandMetadataStore } from "../tools/commandMetadata.js";
 import { log } from "../utils/logger.js";
 import {
   searchSearxng,
@@ -26,6 +27,8 @@ export interface RecursiveCommandResult {
   remainingInstant: BotCommand[];
   /** Async commands collected from all iterations */
   asyncCommands: BotCommand[];
+  /** All commands from the final LLM response (for metadata recording) */
+  finalCommands: BotCommand[];
   /** Whether an intermediate reply was sent during recursion */
   replySent: boolean;
 }
@@ -39,6 +42,7 @@ export interface ProcessRecursiveOptions {
   commands: BotCommand[];
   maxRecursionDepth: number;
   addNothink: boolean;
+  channelId: string;
   ctx: ResponseContext;
   searchConfig?: SearxngConfig;
 }
@@ -110,6 +114,7 @@ export async function processRecursiveCommands(options: ProcessRecursiveOptions)
     commands,
     maxRecursionDepth,
     addNothink,
+    channelId,
     ctx,
     searchConfig = searxngConfig,
   } = options;
@@ -121,11 +126,13 @@ export async function processRecursiveCommands(options: ProcessRecursiveOptions)
   let asyncCommands = [...asyncCmds];
   let reply = initialReply;
   let replySent = false;
+  let currentCommands: BotCommand[] = commands;
 
   for (let depth = 0; depth < maxRecursionDepth && recursiveCmds.length > 0; depth++) {
     if (reply && reply.trim()) {
-      await ctx.sendReply(reply);
+      const msgId = await ctx.sendReply(reply);
       replySent = true;
+      commandMetadataStore.record(msgId, channelId, currentCommands);
     }
 
     const toolResultParts: string[] = [];
@@ -161,9 +168,11 @@ export async function processRecursiveCommands(options: ProcessRecursiveOptions)
       const newCommands = followUpParsed.commands || [];
       const newSplit = splitCommands(newCommands);
 
-      remainingInstant.push(...newSplit.instant.filter((c) => !RECURSIVE_COMMAND_NAMES.includes(c.name)));
+      const newInstant = newSplit.instant.filter((c) => !RECURSIVE_COMMAND_NAMES.includes(c.name));
+      remainingInstant.push(...newInstant);
       asyncCommands.push(...newSplit.async);
       recursiveCmds = newCommands.filter((c) => RECURSIVE_COMMAND_NAMES.includes(c.name));
+      currentCommands = newCommands;
     } catch (error) {
       log.error(`Follow-up LLM call failed (depth ${depth + 1}):`, error);
       break;
@@ -176,5 +185,5 @@ export async function processRecursiveCommands(options: ProcessRecursiveOptions)
     );
   }
 
-  return { reply, remainingInstant, asyncCommands, replySent };
+  return { reply, remainingInstant, asyncCommands, finalCommands: currentCommands, replySent };
 }

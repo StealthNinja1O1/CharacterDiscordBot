@@ -14,6 +14,7 @@ import { executeInstantCommands, executeAsyncCommands } from "../utils/botComman
 import { parseAIResponse } from "../utils/responseParser.js";
 import { generateAIResponse } from "../tools/prompt.js";
 import { processRecursiveCommands } from "../utils/recursiveCommandHandler.js";
+import { commandMetadataStore } from "../tools/commandMetadata.js";
 import {
   fetchReferencedMessage,
   extractImagesFromMessage,
@@ -267,7 +268,7 @@ export class DiscordBot {
 
       // Run recursive commands (web search, fetch, research, crawl)
       const allCommands = parsed.commands || [];
-      const { reply, remainingInstant, asyncCommands, replySent } = await processRecursiveCommands({
+      const { reply, remainingInstant, asyncCommands, finalCommands, replySent } = await processRecursiveCommands({
         llmMessages,
         model,
         temperature,
@@ -276,6 +277,7 @@ export class DiscordBot {
         commands: allCommands,
         maxRecursionDepth: this.discordConfig.maxRecursionDepth,
         addNothink: this.discordConfig.addNothink,
+        channelId: message.channelId,
         ctx,
       });
 
@@ -299,8 +301,8 @@ export class DiscordBot {
 
       // 2. Send final text reply (as follow-up if intermediate was already sent)
       if (reply && reply.trim()) {
-        if (replySent) await ctx.sendFollowUp(reply);
-        else await ctx.sendReply(reply);
+        const finalMsgId = replySent ? await ctx.sendFollowUp(reply) : await ctx.sendReply(reply);
+        commandMetadataStore.record(finalMsgId, message.channelId, finalCommands);
       }
 
       // 3. Execute async commands (generateImage), typing continues during this, although it stops for a few sec for no reason

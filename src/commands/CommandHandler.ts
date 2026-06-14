@@ -217,10 +217,26 @@ export default class CommandHandler {
           userName,
           config.maxContextTokens,
         );
+
+        // Build guild info from the target message so the bot keeps emoji/sticker/guild
+        // awareness (and lorebook) parity with regular message handling.
+        const targetGuild = targetMessage.guild;
+        const guildEmojis = targetGuild?.emojis.cache || null;
+        const guildStickers = targetGuild ? await targetGuild.stickers.fetch().catch(() => null) : null;
+        const askCharGuildInfo = {
+          guildName: targetGuild?.name || "the server",
+          channelName: (targetMessage.channel as any)?.name || "a channel",
+          guildEmojis,
+          guildStickers,
+          botId: this.bot.botDiscordId,
+        };
+
         const { model, messages, temperature } = await buildAIRequest({
           character: this.bot.getCharacter(),
           messages: trimmed,
           userName,
+          guildInfo: askCharGuildInfo,
+          chatMemoryBook: this.bot.getChatMemoryBook(),
         });
         const raw = await generateResponse(model, messages, temperature, config.addNothink);
 
@@ -316,6 +332,19 @@ export default class CommandHandler {
     await cmd.deferReply();
 
     try {
+      // Build guild info from the interaction so the bot keeps emoji/sticker/guild
+      // awareness (and lorebook) parity with regular message handling.
+      const askGuild = cmd.guild;
+      const askGuildEmojis = askGuild?.emojis.cache || null;
+      const askGuildStickers = askGuild ? await askGuild.stickers.fetch().catch(() => null) : null;
+      const askGuildInfo = {
+        guildName: askGuild?.name || "the server",
+        channelName: (cmd.channel as any)?.name || "a channel",
+        guildEmojis: askGuildEmojis,
+        guildStickers: askGuildStickers,
+        botId: this.bot.botDiscordId,
+      };
+
       const { model, messages, temperature } = await buildAIRequest({
         character: this.bot.getCharacter(),
         messages: [
@@ -327,6 +356,8 @@ export default class CommandHandler {
           },
         ],
         userName,
+        guildInfo: askGuildInfo,
+        chatMemoryBook: this.bot.getChatMemoryBook(),
       });
 
       const raw = await generateResponse(model, messages, temperature, config.addNothink);

@@ -11,9 +11,6 @@ node_modules
 # Runtime data files (mounted as volumes at runtime, don't bake into image)
 config.toml
 character.json
-tsuko.json
-*.json
-!config.example.toml
 
 # Editor / OS
 .vscode

@@ -6,6 +6,8 @@ COPY package.json bun.lock* ./
 COPY src ./src
 COPY tsconfig.json ./
 
+RUN bun install --production
+
 # Compile to a single native binary.
 #   --minify            : strip whitespace / shorten identifiers
 #   --bytecode          : pre-compile to bytecode for faster cold start

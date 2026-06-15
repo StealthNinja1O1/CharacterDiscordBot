@@ -73,8 +73,13 @@ square = [1280, 1280]
 portrait = [1008, 1280]
 landscape = [1280, 1008]
 
-# --- SearXNG Web Search (via Miyami API) ---
-[searxng]
+# --- Healthcheck HTTP Server ---
+[health]
+enabled = false                                 # Enable a lightweight /healthz endpoint for Docker/monitoring
+port = 3000                                     # Port to listen on
+
+# --- Web Search (via Miyami API) ---
+[websearch]
 enabled = false                                 # Enable web search tools
 base_url = "https://websearch.miyami.tech"      # Miyami API base URL (self-host: docker run -p 8080:8080 searxng-api)
 language = "auto"                               # Search language (e.g. "en", "de", "auto" for default)

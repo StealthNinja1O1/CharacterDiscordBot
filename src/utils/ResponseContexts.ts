@@ -1,4 +1,4 @@
-import { AttachmentBuilder, Message, CommandInteraction } from "discord.js";
+import { AttachmentBuilder, Message, CommandInteraction, TextChannel } from "discord.js";
 
 export interface AttachmentData {
   buffer: Buffer;
@@ -38,7 +38,7 @@ export class MessageResponseContext implements ResponseContext {
   }
 
   async sendFollowUp(content: string, files?: AttachmentBuilder[]): Promise<string | undefined> {
-    const channel = this.message.channel as import("discord.js").TextChannel;
+    const channel = this.message.channel as TextChannel;
     const sent = await channel.send({
       content: content || undefined,
       files: files?.length ? files : undefined,

@@ -3,24 +3,21 @@ import {
   GatewayIntentBits,
   Events,
   Message,
-  AttachmentBuilder,
   ActivityType,
   PresenceStatusData,
 } from "discord.js";
-import { DiscordConfig, DEFAULT_PRESET, comfyuiConfig } from "../config.js";
+import { DiscordConfig, DEFAULT_PRESET } from "../config.js";
 import { Character } from "../models.js";
 import { readFileSync, existsSync } from "fs";
-import { executeInstantCommands, executeAsyncCommands } from "../utils/botCommandHandler.js";
-import { parseAIResponse } from "../utils/responseParser.js";
 import { generateAIResponse } from "../tools/prompt.js";
-import { processRecursiveCommands } from "../utils/recursiveCommandHandler.js";
-import { commandMetadataStore } from "../tools/commandMetadata.js";
+import { runResponsePipeline } from "../utils/responsePipeline.js";
 import {
   fetchReferencedMessage,
   extractImagesFromMessage,
   extractStickerImagesFromMessage,
 } from "../tools/MessageHistory.js";
-import { loadChatMemoryBook, saveChatMemoryBook, upsertChatMemoryEntry } from "../tools/chatMemoryBook.js";
+import { loadChatMemoryBook } from "../tools/chatMemoryBook.js";
+import { setBotReady } from "../utils/healthcheck.js";
 import CommandHandler from "../commands/CommandHandler.js";
 import { MessageQueue } from "./MessageQueue.js";
 import { log } from "../utils/logger.js";
@@ -29,16 +26,12 @@ import { MessageResponseContext } from "../utils/ResponseContexts.js";
 export interface DiscordBotOptions {
   discordConfig: DiscordConfig;
   characterSource: string | Character; // filepath or character object
-  preset?: typeof DEFAULT_PRESET;
-  onCharacterUpdate?: (character: Character) => void | Promise<void>;
 }
 
 export class DiscordBot {
   private client: Client;
   private discordConfig: DiscordConfig;
   private character: Character;
-  private preset: typeof DEFAULT_PRESET;
-  private onCharacterUpdate: (character: Character) => void | Promise<void>;
   private commandHandler: CommandHandler;
 
   // Runtime state
@@ -53,8 +46,6 @@ export class DiscordBot {
 
   constructor(options: DiscordBotOptions) {
     this.discordConfig = options.discordConfig;
-    this.preset = options.preset || DEFAULT_PRESET;
-    this.onCharacterUpdate = options.onCharacterUpdate || (() => {});
 
     // Load character
     if (typeof options.characterSource === "string") {
@@ -130,6 +121,7 @@ export class DiscordBot {
       log.info(`Memory book: ${this.chatMemoryBook.entries.length} entries loaded`);
 
       await this.commandHandler.registerCommands(this.client.user!.id);
+      setBotReady(this);
     });
 
     this.client.on(Events.MessageCreate, async (message: Message) => {
@@ -263,79 +255,29 @@ export class DiscordBot {
         this.chatMemoryBook,
       );
       log.debug(`Raw LLM response: ${response}`);
-      const parsed = parseAIResponse(response);
       const ctx = new MessageResponseContext(message);
 
-      // Run recursive commands (web search, fetch, research, crawl)
-      const allCommands = parsed.commands || [];
-      const { reply, remainingInstant, asyncCommands, finalCommands, replySent } = await processRecursiveCommands({
+      // Unified pipeline: parse → recursive commands → instant commands →
+      // send reply → async commands → record metadata.
+      await runResponsePipeline({
+        rawResponse: response,
         llmMessages,
         model,
         temperature,
-        initialResponse: response,
-        initialReply: parsed.reply,
-        commands: allCommands,
+        ctx,
+        channelId: message.channelId,
         maxRecursionDepth: this.discordConfig.maxRecursionDepth,
         addNothink: this.discordConfig.addNothink,
-        channelId: message.channelId,
-        ctx,
+        message,
+        character: this.character,
+        chatMemoryBook: this.chatMemoryBook,
+        chatMemoryBookPath: this.discordConfig.chatMemoryBookPath,
+        onChatMemoryUpdate: (updated) => {
+          this.chatMemoryBook = updated;
+        },
+        onAsyncStart: () => this.setGeneratingPresence(),
+        onAsyncEnd: () => this.setIdlePresence(),
       });
-
-      // 1. Execute remaining instant commands (react, rename, lorebook, sticker, setBio)
-      if (remainingInstant.length > 0) {
-        const instantResults = await executeInstantCommands(remainingInstant, {
-          message,
-          character: this.character,
-          characterFilePath: this.discordConfig.characterFilePath,
-          chatMemoryBook: this.chatMemoryBook,
-          chatMemoryBookPath: this.discordConfig.chatMemoryBookPath,
-          onChatMemoryUpdate: (updated) => {
-            this.chatMemoryBook = updated;
-          },
-        });
-        for (const result of instantResults) {
-          if (result.success) log.info(`Command: ${result.message}`);
-          else log.warn(`Command failed: ${result.message}`);
-        }
-      }
-
-      // 2. Send final text reply (as follow-up if intermediate was already sent)
-      if (reply && reply.trim()) {
-        const finalMsgId = replySent ? await ctx.sendFollowUp(reply) : await ctx.sendReply(reply);
-        commandMetadataStore.record(finalMsgId, message.channelId, finalCommands);
-      }
-
-      // 3. Execute async commands (generateImage), typing continues during this, although it stops for a few sec for no reason
-      if (asyncCommands.length > 0) {
-        this.setGeneratingPresence();
-        const asyncResults = await executeAsyncCommands(asyncCommands, {
-          message,
-          character: this.character,
-          characterFilePath: this.discordConfig.characterFilePath,
-          chatMemoryBook: this.chatMemoryBook,
-          chatMemoryBookPath: this.discordConfig.chatMemoryBookPath,
-          onChatMemoryUpdate: (updated) => {
-            this.chatMemoryBook = updated;
-          },
-        });
-        for (const result of asyncResults) {
-          if (result.success && result.attachment) {
-            const file = new AttachmentBuilder(result.attachment.buffer, { name: result.attachment.name });
-            const followUpText =
-              comfyuiConfig.includePromptInMessage && result.prompt
-                ? `image: ${result.prompt}, ${result.orientation ?? "square"}`
-                : "";
-            await ctx.sendFollowUp(followUpText, [file]);
-            log.info(`Async command: ${result.message}`);
-          } else if (result.success) {
-            log.info(`Async command: ${result.message}`);
-          } else {
-            await ctx.sendFollowUp("*[The static interfered with the image generation...]*");
-            log.warn(`Async command failed: ${result.message}`);
-          }
-        }
-        this.setIdlePresence();
-      }
 
       if (typingInterval) clearInterval(typingInterval);
     } catch (error) {
@@ -388,6 +330,15 @@ export class DiscordBot {
 
   public getChatMemoryBook() {
     return this.chatMemoryBook;
+  }
+
+  /** Per-channel message queue depths (for healthcheck / monitoring). */
+  public getQueueDepths(): Record<string, number> {
+    const depths: Record<string, number> = {};
+    for (const channelId of this.isBusy.keys()) {
+      depths[channelId] = this.messageQueue.size(channelId);
+    }
+    return depths;
   }
 
   public setChatMemoryBook(book: typeof this.chatMemoryBook) {

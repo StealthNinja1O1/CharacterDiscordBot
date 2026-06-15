@@ -1,6 +1,7 @@
 import { ImageAttachment } from "../models.js";
 import { config, llmConfig } from "../config.js";
 import { log } from "../utils/logger.js";
+import { recordLlmCall } from "../utils/healthcheck.js";
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -118,6 +119,7 @@ export async function generateResponse(
       log.info(`LLM response received in ${elapsed.toFixed(1)}s (no usage data)`);
     }
 
+    recordLlmCall();
     return data.choices[0].message.content;
   } catch (error) {
     log.error("LLM API request failed:", error);

@@ -34,15 +34,17 @@ export interface FormattedMessage {
 }
 
 /**
- * Fetches message history from a Discord channel
+ * Fetches message history from a Discord channel.
+ * The limit is clamped to [1, 100] because fuck discord api and their 100 limit.
  */
 export async function fetchMessageHistory(message: Message, limit: number, botId: string | null): Promise<HistoryMessage[]> {
+  const clampedLimit = Math.min(Math.max(limit || 50, 1), 100);
   try {
     const fetchedMessages = await message.channel.messages.fetch({
-      limit: limit,
+      limit: clampedLimit,
     });
 
-    // Remove the trigger message itself — the caller (generateAIResponse) appends it separately at the end so we force a reply to it. Add timestamps if you want the llm to know its out of order.
+    // Remove the trigger message itself,  the caller (generateAIResponse) appends it separately at the end so we force a reply to it. Add timestamps if you want the llm to know its out of order.
     const filtered = Array.from(fetchedMessages.values()).filter((msg) => {
       if (msg.id === message.id) return false;
       return true;

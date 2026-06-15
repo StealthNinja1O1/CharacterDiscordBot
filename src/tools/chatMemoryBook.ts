@@ -1,14 +1,8 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
-import { LorebookEntry } from "../models.js";
+import { LorebookEntry, ChatMemoryBook } from "../models.js";
 import { log } from "../utils/logger.js";
 
-/**
- * Shape of the chatMemory.json file.
- * Stores dynamic/editable lorebook entries that the bot can modify at runtime.
- */
-export interface ChatMemoryBook {
-  entries: LorebookEntry[];
-}
+export type { ChatMemoryBook };
 
 /**
  * Load the ChatMemoryBook from disk.

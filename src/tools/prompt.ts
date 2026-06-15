@@ -1,4 +1,5 @@
 import { DEFAULT_PRESET, DiscordConfig, discordConfig } from "../config.js";
+import { availableCommands } from "../commands/index.js";
 import { Character, Message, AIRequestBody, ImageAttachment, CharacterBook, LorebookEntry } from "../models.js";
 import { ChatMemoryBook } from "./chatMemoryBook.js";
 import { processLorebook } from "./lorebook.js";
@@ -74,7 +75,11 @@ export async function buildAIRequest({
   }> = [
     {
       role: "system",
-      content: DEFAULT_PRESET.prompt_template,
+      // Inject the available-commands list into the {{availableCommands}} placeholder
+      content: DEFAULT_PRESET.prompt_template.replace(
+        "{{availableCommands}}",
+        availableCommands.map((c) => JSON.stringify(c)).join("\n"),
+      ),
     },
   ];
 

@@ -55,7 +55,12 @@ export interface BehaviorConfig {
   logLevel: string;
 }
 
-export interface SearxngConfig {
+export interface HealthConfig {
+  enabled: boolean;
+  port: number;
+}
+
+export interface WebSearchConfig {
   enabled: boolean;
   baseUrl: string;
   language: string;
@@ -95,7 +100,8 @@ export interface AppConfig {
   vision: VisionConfig;
   behavior: BehaviorConfig;
   comfyui: ComfyUiConfig;
-  searxng: SearxngConfig;
+  health: HealthConfig;
+  webSearch: WebSearchConfig;
 }
 
 // ============================================================
@@ -192,12 +198,18 @@ const config: AppConfig = {
     maxRecursionDepth: parseInt(String(parsed.discord?.max_recursion_depth ?? "2"), 10),
   },
 
-  searxng: {
-    enabled: parsed.searxng?.enabled === true,
-    baseUrl: parsed.searxng?.base_url ?? "",
-    language: parsed.searxng?.language ?? "auto",
-    maxResults: parseInt(String(parsed.searxng?.max_results ?? "5"), 10),
-    autoBypass: parsed.searxng?.auto_bypass !== false,
+  health: {
+    enabled: parsed.health?.enabled === true,
+    port: parseInt(String(parsed.health?.port ?? "3000"), 10),
+  },
+
+  webSearch: {
+    // Accept either [websearch] (preferred) or legacy [searxng] section name
+    enabled: (parsed.websearch ?? parsed.searxng)?.enabled === true,
+    baseUrl: (parsed.websearch ?? parsed.searxng)?.base_url ?? "",
+    language: (parsed.websearch ?? parsed.searxng)?.language ?? "auto",
+    maxResults: parseInt(String((parsed.websearch ?? parsed.searxng)?.max_results ?? "5"), 10),
+    autoBypass: (parsed.websearch ?? parsed.searxng)?.auto_bypass !== false,
   },
 };
 
@@ -233,95 +245,80 @@ export const llmConfig = config.llm;
 export const visionConfig = config.vision;
 export const behaviorConfig = config.behavior;
 export const comfyuiConfig = config.comfyui;
-export const searxngConfig = config.searxng;
+export const healthConfig = config.health;
+export const webSearchConfig = config.webSearch;
 
 // ============================================================
-// Available Commands (injected into LLM system prompt)
+// Config Hot-Reload
+//
+// Watches config.toml for changes, 
+// Settings like botToken, baseUrl, apiKey, model, file paths require a restart
 // ============================================================
 
-export const availableCommands = [
-  {
-    name: "react",
-    args: { emoji: "string" },
-    description:
-      "React to the previous message with the specified emoji. Use official Discord emojis or custom ones from the server (format: emojiName:emojiId).",
-    enabled: true,
-  },
-  {
-    name: "renameSelf",
-    args: { newName: "string" },
-    description: "Change {{char}}'s nickname in the server to the specified newName.",
-    enabled: config.discord.allowRenaming,
-  },
-  {
-    name: "renameUser",
-    args: { userId: "string", newName: "string" },
-    description: "Change the nickname of the specified user in the server to newName.",
-    enabled: config.discord.allowRenaming,
-  },
-  {
-    name: "postSticker",
-    args: { stickerName: "string" },
-    description: "Send a sticker from the server. Use the exact sticker name from the available stickers list.",
-    enabled: true,
-  },
-  {
-    name: "editOrAddToLorebook",
-    args: { entryName: "string", keywords: ["name1", "..."], content: "string" },
-    description: `You can create or update existing lorebook entries about people or things you learn. Do this when you learn something new about a user.
-      You can also add entries but please only update entries that you can see the value of.
-      Keywords are what trigger the entry to be included in context, so use them wisely, its smart to add userid, username and displayname, along with possible nicknames or descriptive keywords.
-      USE THIS COMMAND CONSISTENTLY`,
-    enabled: config.discord.allowLorebookEditing,
-  },
-  {
-    name: "generateImage",
-    args: { prompt: "string", orientation: "portrait | square | landscape (default: square)" },
-    description: `Generate an image using the image generator. Provide a descriptive prompt and choose orientation. The image will be sent as a follow-up message. Use Booru style tags like "1girl, smile, blue hair, medium breasts, cowboy shot, dark, simple background" etc. natural language does not work as well.`,
-    enabled: config.comfyui.enabled,
-  },
-  {
-    name: "setBio",
-    args: { bio: "string (max 190 characters)" },
-    description: `Set {{char}}'s about me / bio text on their server profile`,
-    enabled: config.discord.allowRenaming,
-  },
-  {
-    name: "webSearch",
-    args: { query: "string" },
-    description: `Search the web for information using a search engine. Use this when you need factual information you are not sure about, need to look something up, or want to verify facts. Your reply before this command will be sent first, then you will receive search results and can give an informed follow-up answer.`,
-    enabled: config.searxng.enabled,
-    isRecursive: true,
-  },
-  {
-    name: "fetchWebpage",
-    args: { url: "string" },
-    description: `Fetch and extract the full content of a specific webpage in markdown format. Use when you have a URL and need the actual page content, not just a search snippet. Good for reading articles, documentation, or reference pages.`,
-    enabled: config.searxng.enabled,
-    isRecursive: true,
-  },
-  {
-    name: "searchAndFetch",
-    args: { query: "string", num_results: "number (1-5, default 3)" },
-    description: `Search the web AND fetch full page content from the top results. More thorough than webSearch (which only returns snippets). Use when you need detailed information from multiple sources. Slower but much more comprehensive.`,
-    enabled: config.searxng.enabled,
-    isRecursive: true,
-  },
-  {
-    name: "deepResearch",
-    args: { queries: ["query1", "query2", "..."] },
-    description: `Perform deep multi-query research in parallel. Provide up to 10 search queries and get a compiled research report. Best for complex topics that need multiple angles. Slowest but most thorough option.`,
-    enabled: config.searxng.enabled,
-    isRecursive: true,
-  },
-  {
-    name: "crawlSite",
-    args: { start_url: "string", max_pages: "number (1-200, default 5)", max_depth: "number (0-5, default 1)" },
-    description: `Crawl an entire website recursively and extract content from multiple pages. Use for documentation sites, wikis, or when you need comprehensive info from a single source. Very slow — use only when really needed.`,
-    enabled: config.searxng.enabled,
-    isRecursive: true,
-  },
-];
+import { watch } from "fs";
+
+let reloadTimer: NodeJS.Timeout | null = null;
+
+function applyHotReload(newParsed: any) {
+  const d = config.discord;
+  const before = {
+    randomResponseRate: d.randomResponseRate,
+    triggerKeywords: d.triggerKeywords,
+    maxContextTokens: d.maxContextTokens,
+    minResponseIntervalSeconds: d.minResponseIntervalSeconds,
+    ignoreOtherBots: d.ignoreOtherBots,
+    replyToMentions: d.replyToMentions,
+    maxRecursionDepth: d.maxRecursionDepth,
+    maxHistoryMessages: d.maxHistoryMessages,
+  };
+
+  d.randomResponseRate = parseInt(String(newParsed.discord?.random_response_rate ?? d.randomResponseRate), 10);
+  d.triggerKeywords = newParsed.discord?.trigger_keywords ?? d.triggerKeywords;
+  d.maxContextTokens = parseInt(String(newParsed.discord?.max_context_tokens ?? d.maxContextTokens), 10);
+  d.minResponseIntervalSeconds = parseInt(
+    String(newParsed.discord?.min_response_interval_seconds ?? d.minResponseIntervalSeconds),
+    10,
+  );
+  d.ignoreOtherBots = newParsed.discord?.ignore_other_bots ?? d.ignoreOtherBots;
+  d.replyToMentions = newParsed.discord?.reply_to_mentions ?? d.replyToMentions;
+  d.maxRecursionDepth = parseInt(String(newParsed.discord?.max_recursion_depth ?? d.maxRecursionDepth), 10);
+  d.maxHistoryMessages = parseInt(String(newParsed.discord?.max_history_messages ?? d.maxHistoryMessages), 10);
+
+  const changes: string[] = [];
+  for (const [key, oldVal] of Object.entries(before)) {
+    const newVal = (d as any)[key];
+    if (JSON.stringify(oldVal) !== JSON.stringify(newVal))
+      changes.push(`${key}: ${JSON.stringify(oldVal)} → ${JSON.stringify(newVal)}`);
+  }
+  if (changes.length > 0) console.log(`[config] Hot-reloaded: ${changes.join(", ")}`);
+  else console.log("[config] Reloaded (no hot-reloadable changes detected)");
+}
+
+function reloadConfig() {
+  try {
+    const raw = readFileSync(configPath, "utf-8");
+    const newParsed = TOML.parse(raw) as any;
+    applyHotReload(newParsed);
+  } catch (error) {
+    console.error(`[config] Failed to reload ${configPath}:`, error);
+  }
+}
+
+// Debounced watcher
+let watcherStarted = false;
+export function startConfigWatcher() {
+  if (watcherStarted) return;
+  watcherStarted = true;
+  try {
+    watch(configPath, () => {
+      if (reloadTimer) clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(reloadConfig, 500);
+    });
+    console.log(`[config] Watching ${configPath} for hot-reload`);
+  } catch (error) {
+    console.warn(`[config] Could not start file watcher:`, error);
+  }
+}
 
 // ============================================================
 // Default Preset (system prompt template)
@@ -377,12 +374,7 @@ Follow these content guidelines:
 }
 \`\`\`
 Available commands are:
-${availableCommands
-  .map((c) => {
-    if (c.enabled) return JSON.stringify(c);
-    else return "";
-  })
-  .join("\n")}
+{{availableCommands}}
 Use them by adding "commands":[{name:"commandName", "args":{"arg1":"value"}}] in your response. Follow the command descriptions and argument requirements precisely when using them.
 Multiple commands can be used at once by adding more objects to the "commands" array. If you don't want to use any commands, just return an empty array. Always return valid JSON, never deviate from the format or add any commentary outside of it.
 Your message history will show the commands you previously used (like reactions). Always fully write out any new commands you want to use in the "commands" array.
@@ -413,12 +405,3 @@ A member of the discord server {{serverName}} in channel {{channelName}} named {
   temperature: config.llm.temperature,
   is_default: true,
 };
-
-// Kimi thinking fix by https://github.com/axshb
-if (config.llm.model.toLowerCase().includes("kimi")) {
-  const promptFix = `[OOC: Keep your thinking short. Do not draft, plan, make bullet points, or anything along those lines. You are confident. Your output should be immediate and direct. Do not revise anything at all before displaying it to {{user}}. That is not your job. Keep the reasoning/thinking to max 300 tokens.]`;
-  DEFAULT_PRESET.prompt_template = DEFAULT_PRESET.prompt_template.replace(
-    "{History start}",
-    `${promptFix}\n\n{History start}`,
-  );
-}

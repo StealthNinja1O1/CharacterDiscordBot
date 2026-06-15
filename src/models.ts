@@ -37,13 +37,17 @@ export interface DepthPrompt {
   role?: string;
 }
 
+export interface ChatMemoryBook {
+  entries: LorebookEntry[];
+}
+
 export interface Character {
   name: string;
   description: string;
   mesExample: string;
   depthPrompt: DepthPrompt | null;
   character_book: CharacterBook | null;
-  chatMemoryBook: CharacterBook | null;
+  chatMemoryBook: ChatMemoryBook | null;
 }
 
 export interface CharacterCardV2 {

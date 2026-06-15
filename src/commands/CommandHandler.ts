@@ -10,26 +10,20 @@ import {
   TextInputBuilder,
   TextInputStyle,
   Message,
-  AttachmentBuilder,
 } from "discord.js";
 import { DiscordBot } from "../classes/DiscordBot.js";
 import CommandManager from "./CommandManager.js";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { LorebookEntry } from "../models.js";
-import { ChatMemoryBook, saveChatMemoryBook, upsertChatMemoryEntry } from "../tools/chatMemoryBook.js";
+import { ChatMemoryBook, saveChatMemoryBook } from "../tools/chatMemoryBook.js";
 import { log } from "../utils/logger.js";
 import { buildAIRequest, trimMessagesToTokenBudget } from "../tools/prompt.js";
-import { executeBotCommands } from "../utils/botCommandHandler.js";
-import { splitCommands, executeInstantCommands, executeAsyncCommands } from "../utils/botCommandHandler.js";
-import { parseAIResponse } from "../utils/responseParser.js";
+import { runResponsePipeline } from "../utils/responsePipeline.js";
 import { generateResponse } from "../api/llm.js";
-import { comfyuiConfig } from "../config.js";
 import { fetchMessageHistory, formatMessagesForAI } from "../tools/MessageHistory.js";
 import { InteractionResponseContext } from "../utils/ResponseContexts.js";
 import { extractImagesFromMessage, extractStickerImagesFromMessage } from "../tools/MessageHistory.js";
 import { describeImages, formatImageDescriptions } from "../api/vision.js";
-import { processRecursiveCommands } from "../utils/recursiveCommandHandler.js";
-import { commandMetadataStore } from "../tools/commandMetadata.js";
 
 export default class CommandHandler {
   private bot: DiscordBot;
@@ -46,7 +40,7 @@ export default class CommandHandler {
   }
 
   async handleInteraction(interaction: Interaction) {
-    // Handle message context menu (right-click → Ask Character)
+    // Handle message context menu (right-click -> Ask Character)
     if (interaction.isMessageContextMenuCommand()) {
       await this.handleAskCharCommand(interaction as MessageContextMenuCommandInteraction);
       return;
@@ -122,7 +116,7 @@ export default class CommandHandler {
   private async handleAskCharCommand(interaction: MessageContextMenuCommandInteraction) {
     const config = this.bot.getConfig();
 
-    // Permission check — same allowed users as other commands
+    // Permission check, same allowed users as other commands
     if (!config.allowedUserIds.includes(interaction.user.id)) {
       await interaction.reply({ content: "You don't have permission to use this command.", ephemeral: true });
       return;
@@ -194,7 +188,12 @@ export default class CommandHandler {
           ? `${displayName} (${userName} - ${userId}): ${imageDescriptionText}${targetContent ? "\n" + targetContent : ""}`
           : `${displayName} (${userName} - ${userId}): ${targetContent}`;
 
-        formattedHistory.push({ id: targetMessage.id, role: "user", content: messageContent, createdAt: targetMessage.createdAt });
+        formattedHistory.push({
+          id: targetMessage.id,
+          role: "user",
+          content: messageContent,
+          createdAt: targetMessage.createdAt,
+        });
 
         const allMessages = formattedHistory.map((m) => ({
           id: m.id,
@@ -239,69 +238,27 @@ export default class CommandHandler {
           chatMemoryBook: this.bot.getChatMemoryBook(),
         });
         const raw = await generateResponse(model, messages, temperature, config.addNothink);
-
-        const parsed = parseAIResponse(raw);
         const ctx = new InteractionResponseContext(modalInt);
 
-        // Run recursive commands (web search, fetch, research, crawl)
-        const allCommands = parsed.commands || [];
-        const { reply, remainingInstant, asyncCommands, finalCommands, replySent } = await processRecursiveCommands({
+        // Unified pipeline: parse -> recursive commands -> instant commands ->
+        // send reply -> async commands -> record metadata.
+        await runResponsePipeline({
+          rawResponse: raw,
           llmMessages: messages,
           model,
           temperature,
-          initialResponse: raw,
-          initialReply: parsed.reply,
-          commands: allCommands,
+          ctx,
+          channelId: targetMessage.channelId,
           maxRecursionDepth: config.maxRecursionDepth,
           addNothink: config.addNothink,
-          channelId: targetMessage.channelId,
-          ctx,
+          message: targetMessage as any,
+          character: this.bot.getCharacter(),
+          chatMemoryBook: this.bot.getChatMemoryBook(),
+          chatMemoryBookPath: config.chatMemoryBookPath,
+          onChatMemoryUpdate: (book) => {
+            this.bot.setChatMemoryBook(book);
+          },
         });
-
-        // Execute instant commands (react, rename, etc)
-        if (remainingInstant.length > 0) {
-          const commandResults = await executeInstantCommands(remainingInstant, {
-            message: targetMessage as any,
-            character: this.bot.getCharacter(),
-            characterFilePath: config.characterFilePath,
-            chatMemoryBook: this.bot.getChatMemoryBook(),
-            chatMemoryBookPath: config.chatMemoryBookPath,
-            onChatMemoryUpdate: (book) => {
-              this.bot.setChatMemoryBook(book);
-            },
-          });
-          for (const result of commandResults) {
-            if (result.success) log.info(`Command: ${result.message}`);
-            else log.warn(`Command failed: ${result.message}`);
-          }
-        }
-
-        // Send text reply (as follow-up if intermediate was sent during recursion)
-        const finalReply = reply?.trim() || "*...*";
-        const finalMsgId = replySent ? await ctx.sendFollowUp(finalReply) : await ctx.sendReply(finalReply);
-        commandMetadataStore.record(finalMsgId, targetMessage.channelId, finalCommands);
-
-        // Execute async commands (generateImage)
-        if (asyncCommands.length > 0) {
-          const asyncResults = await executeAsyncCommands(asyncCommands, {
-            message: targetMessage as any,
-            character: this.bot.getCharacter(),
-          });
-          for (const result of asyncResults) {
-            if (result.success && result.attachment) {
-              const file = new AttachmentBuilder(result.attachment.buffer, { name: result.attachment.name });
-              const followUpText =
-                comfyuiConfig.includePromptInMessage && result.prompt
-                  ? `image: ${result.prompt}, ${result.orientation ?? "square"}`
-                  : "";
-              await ctx.sendFollowUp(followUpText, [file]);
-              log.info(`Async command: ${result.message}`);
-            } else if (!result.success) {
-              await ctx.sendFollowUp("*[The static interfered with the image generation...]*");
-              log.warn(`Async command failed: ${result.message}`);
-            }
-          }
-        }
       } catch (err) {
         log.error("AskChar modal error:", err);
         try {
@@ -332,8 +289,6 @@ export default class CommandHandler {
     await cmd.deferReply();
 
     try {
-      // Build guild info from the interaction so the bot keeps emoji/sticker/guild
-      // awareness (and lorebook) parity with regular message handling.
       const askGuild = cmd.guild;
       const askGuildEmojis = askGuild?.emojis.cache || null;
       const askGuildStickers = askGuild ? await askGuild.stickers.fetch().catch(() => null) : null;
@@ -361,55 +316,25 @@ export default class CommandHandler {
       });
 
       const raw = await generateResponse(model, messages, temperature, config.addNothink);
-      const parsed = parseAIResponse(raw);
       const ctx = new InteractionResponseContext(cmd);
 
-      // Run recursive commands (web search, fetch, research, crawl) with re-prompting
-      const allCommands = parsed.commands || [];
-      const { reply, remainingInstant, asyncCommands, finalCommands, replySent } = await processRecursiveCommands({
+      await runResponsePipeline({
+        rawResponse: raw,
         llmMessages: messages,
         model,
         temperature,
-        initialResponse: raw,
-        initialReply: parsed.reply,
-        commands: allCommands,
+        ctx,
+        channelId: cmd.channelId,
         maxRecursionDepth: config.maxRecursionDepth,
         addNothink: config.addNothink,
-        channelId: cmd.channelId,
-        ctx,
+        message: null,
+        character: this.bot.getCharacter(),
+        chatMemoryBook: this.bot.getChatMemoryBook(),
+        chatMemoryBookPath: config.chatMemoryBookPath,
+        onChatMemoryUpdate: (book) => {
+          this.bot.setChatMemoryBook(book);
+        },
       });
-
-      // Skip instant commands — no message context for reactions/renames
-      if (remainingInstant.length > 0) {
-        log.debug("Ask command cannot execute instant commands (no message context):", remainingInstant);
-      }
-
-      // Send text reply (as follow-up if intermediate was sent during recursion)
-      const finalReply = reply?.trim() || "*...*";
-      const finalMsgId = replySent ? await ctx.sendFollowUp(finalReply) : await ctx.sendReply(finalReply);
-      commandMetadataStore.record(finalMsgId, cmd.channelId, finalCommands);
-
-      // Execute async commands (generateImage works without message context)
-      if (asyncCommands.length > 0) {
-        const asyncResults = await executeAsyncCommands(asyncCommands, {
-          message: null as any, // async commands don't need message context
-          character: this.bot.getCharacter(),
-        });
-        for (const result of asyncResults) {
-          if (result.success && result.attachment) {
-            const file = new AttachmentBuilder(result.attachment.buffer, { name: result.attachment.name });
-            const followUpText =
-              comfyuiConfig.includePromptInMessage && result.prompt
-                ? `image: ${result.prompt}, ${result.orientation ?? "square"}`
-                : "";
-            await ctx.sendFollowUp(followUpText, [file]);
-            log.info(`Async command: ${result.message}`);
-          } else if (!result.success) {
-            await ctx.sendFollowUp("*[The static interfered with the image generation...]*");
-            log.warn(`Async command failed: ${result.message}`);
-          }
-        }
-      }
     } catch (err) {
       log.error("Ask command error:", err);
       try {

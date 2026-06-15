@@ -1,24 +1,12 @@
-import { EventEmitter } from "events";
 import { REST } from "discord.js";
 import { Routes, SlashCommandBuilder, ContextMenuCommandBuilder, ApplicationCommandType } from "discord.js";
 import { discordConfig } from "../config.js";
 import { log } from "../utils/logger.js";
 
-export type CommandEventPayload =
-  | { type: "togglerandom" }
-  | { type: "togglementions" }
-  | { type: "togglebot" }
-  | { type: "update"; fileUrl: string; filename: string }
-  | { type: "lorebook" }
-  | { type: "memory" }
-  | { type: "askchar" }
-  | { type: "ask" };
-
-export class CommandManager extends EventEmitter {
+export class CommandManager {
   rest: REST;
 
   constructor() {
-    super();
     this.rest = new REST({ version: "10" }).setToken(discordConfig.botToken);
   }
 
@@ -86,12 +74,6 @@ export class CommandManager extends EventEmitter {
     } catch (err) {
       log.error("Failed to register commands:", err);
     }
-  }
-
-  // Emit a command event after verifying the caller is an allowed admin
-  emitCommand(command: string, payload?: any) {
-    // The actual permission check (user ID) is handled in index.ts before calling emitCommand
-    this.emit("command", payload || { type: command });
   }
 }
 

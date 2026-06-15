@@ -1,0 +1,28 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Build artifacts
+dist
+node_modules
+*.log
+
+# Runtime data files (mounted as volumes at runtime, don't bake into image)
+config.toml
+character.json
+tsuko.json
+*.json
+!config.example.toml
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Docs & misc (not needed at build time)
+README.md
+LICENSE
+flake.nix
+.env

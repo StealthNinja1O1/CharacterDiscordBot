@@ -1,13 +1,8 @@
 import { Message, User } from "discord.js";
-import sharp from "sharp";
 import { ImageAttachment, ReactionInfo } from "../models.js";
+import { compressImage, encodeUncompressed } from "../utils/imageProcessor.js";
 import { log } from "../utils/logger.js";
 import { commandMetadataStore } from "./commandMetadata.js";
-
-/** Max dimension for compressed images (fits within this box, aspect ratio preserved). ~2MP max. */
-const MAX_IMAGE_DIMENSION = 1600;
-/** JPEG quality for compressed output */
-const JPEG_QUALITY = 80;
 
 export interface HistoryMessage {
   id: string;
@@ -174,24 +169,16 @@ async function downloadAndEncodeImage(url: string, _contentType: string): Promis
 
     const originalBuffer = Buffer.from(await response.arrayBuffer());
 
-    try {
-      const compressedBuffer = await sharp(originalBuffer)
-        .resize(MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION, { fit: "inside", withoutEnlargement: true })
-        .flatten({ background: { r: 255, g: 255, b: 255 } })
-        .jpeg({ quality: JPEG_QUALITY })
-        .toBuffer();
-
-      const originalKB = (originalBuffer.length / 1024).toFixed(0);
-      const compressedKB = (compressedBuffer.length / 1024).toFixed(0);
+    const compressed = await compressImage(originalBuffer, _contentType);
+    if (compressed) {
+      const originalKB = (compressed.originalSize / 1024).toFixed(0);
+      const compressedKB = (compressed.compressedSize / 1024).toFixed(0);
       log.debug(`Image compressed: ${originalKB}KB → ${compressedKB}KB`);
-
-      const base64 = compressedBuffer.toString("base64");
-      return `data:image/jpeg;base64,${base64}`;
-    } catch (compressionError) {
-      log.warn(`Image compression failed for ${url}, using original: ${compressionError}`);
-      const base64 = originalBuffer.toString("base64");
-      return `data:${_contentType};base64,${base64}`;
+      return compressed.base64DataUrl;
     }
+
+    log.debug(`No image backend available for ${url}, using original (${(originalBuffer.length / 1024).toFixed(0)}KB)`);
+    return encodeUncompressed(originalBuffer, _contentType);
   } catch (error) {
     log.error(`Error encoding image from ${url}:`, error);
     return null;

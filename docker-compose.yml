@@ -1,14 +1,13 @@
-version: "3.8"
-
 services:
   bot:
     image: stealthninja1o1/characterdiscordbot:latest
     container_name: characterdiscordbot
     restart: unless-stopped
-    command: ["npm", "run", "start"]
     environment:
-      - CONFIG_PATH=/home/node/app/config.toml
+      - CONFIG_PATH=/app/config.toml
     volumes:
-      - ./config.toml:/home/node/app/config.toml
-      - ./character.json:/home/node/app/character.json
-      - ./workflow.json:/home/node/app/workflow.json
+      - ./config.toml:/app/config.toml
+      - ./character.json:/app/character.json
+      - ./chatMemory.json:/app/chatMemory.json
+      - ./command_metadata.json:/app/command_metadata.json
+      - ./workflow.json:/app/workflow.json

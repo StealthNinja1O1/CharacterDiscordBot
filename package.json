@@ -6,6 +6,7 @@
   "main": "src/index.ts",
   "scripts": {
     "start": "bun src/index.ts",
+    "start:node": "npx tsx src/index.ts",
     "dev": "bun --watch src/index.ts",
     "typecheck": "tsc --noEmit"
   },

@@ -2,6 +2,9 @@
 
 A Discord bot that roleplays as a character defined by a Character Card V2 JSON file. Uses OpenAI-compatible APIs for response generation with a DIY tool-calling system that works with any model - including non-tool-calling ones.
 
+# CONSIDER THIS PROJECT ARCHIVED.
+Development moved to [Nyxal](https://github.com/StealthNinja1O1/Nyxal) where I will continue to extend this project. Im not gonna update 2 projects doing the same thing. 
+
 ## Features
 
 ### Core
